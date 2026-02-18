@@ -1,7 +1,4 @@
 
-## README du backend (API Node/Express)
-
-```md
 # Backend – API Gestion d'Achats
 
 API REST pour gérer les demandes d'achats et les abonnements des bibliothèques.
@@ -28,8 +25,8 @@ Le frontend (Angular) se trouve dans un dépôt séparé.
 ### 1. Cloner le projet
 
 ```bash
-git clone https://github.com/bibudem/app-gestion-achats-backend.git
-cd app-gestion-achats-backend
+git clone https://github.com/bibudem/chaine-achat-backend.git
+cd chaine-achat-backend
 ```
 
 ### 2. Installer les dépendances
