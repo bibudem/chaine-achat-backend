@@ -119,6 +119,3 @@ app-gestion-achats-backend/
 Développée par Natalia Jabinschi  
 
 © 2026 Bibudem – Tous droits réservés
-```
-
-Si tu me confirmes les noms exacts de tes dépôts (`app-gestion-achats-frontend`, `app-gestion-achats-backend`, autre), je peux ajuster les URLs `git clone` et quelques libellés pour coller parfaitement.
