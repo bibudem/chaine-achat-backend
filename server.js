@@ -4,7 +4,7 @@ const express = require('express');
 console.log('Démarrage du serveur...');
 
 /* ---------------------- IMPORTS ----------------------- */
-let itemsRoutes, homeRoutes, validationMiddleware, rapportsRoutes;
+let itemsRoutes, homeRoutes, validationMiddleware, rapportsRoutes, reponsesRoutes;
 
 try {
   itemsRoutes = require('./routes/items');
@@ -34,6 +34,15 @@ try {
   console.log('Routes rapports chargées');
 } catch (e) {
   console.error('❌ Erreur chargement routes rapports:', e.message);
+  process.exit(1);
+}
+
+
+try {
+  reponsesRoutes = require('./routes/reponses');
+  console.log('Routes reponses chargées');
+} catch (e) {
+  console.error('❌ Erreur chargement routes reponses:', e.message);
   process.exit(1);
 }
 
@@ -76,7 +85,10 @@ if (validationMiddleware?.apiLimiter) {
 /* ---------------------- ROUTES ----------------------- */
 app.use('/items', itemsRoutes);
 if (homeRoutes) app.use('/home', homeRoutes);
+
 app.use('/rapports', rapportsRoutes);
+
+app.use('/reponses', reponsesRoutes);
 
 /* ---------------------- ROUTE DE SANTÉ ----------------------- */
 app.get('/health', (req, res) => {
