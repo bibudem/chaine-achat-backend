@@ -208,13 +208,13 @@ async function insertSpecificData(client, itemId, formulaireType, data) {
   `;
 
   // 👇 LOGS UTILES
-  console.log('📌 Table:', tableName);
-  console.log('📄 Requête SQL:', query.trim());
-  console.log('📦 Valeurs:', values);
+  console.log('Table:', tableName);
+  console.log('Requête SQL:', query.trim());
+  console.log('Valeurs:', values);
 
   await client.query(query, values);
 
-  console.log(`✅ Données spécifiques insérées / mises à jour dans ${tableName}`);
+  console.log(`Données spécifiques insérées / mises à jour dans ${tableName}`);
 }
 
 // ==================== HELPER: UPDATE SPECIFIC DATA ====================
@@ -244,7 +244,7 @@ async function updateSpecificData(client, itemId, formulaireType, data) {
       tableName = 'tbl_suggestion_achat';
       break;
     default:
-      console.log('⚠️ Type de formulaire non reconnu:', formulaireType);
+      console.log('Type de formulaire non reconnu:', formulaireType);
       return;
   }
   
@@ -254,7 +254,7 @@ async function updateSpecificData(client, itemId, formulaireType, data) {
     .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
   
   if (Object.keys(filteredData).length === 0) {
-    console.log('⚠️ Aucune donnée spécifique à mettre à jour');
+    console.log('Aucune donnée spécifique à mettre à jour');
     return;
   }
   
@@ -274,7 +274,7 @@ async function updateSpecificData(client, itemId, formulaireType, data) {
       WHERE item_id = $${entries.length + 1}
     `;
     await client.query(updateQuery, values);
-    console.log(`✅ Données spécifiques mises à jour dans ${tableName}`);
+    console.log(`Données spécifiques mises à jour dans ${tableName}`);
   } else {
     // INSERT si n'existe pas
     await insertSpecificData(client, itemId, formulaireType, filteredData);
@@ -320,7 +320,7 @@ async function getSpecificData(client, itemId, formulaireType) {
       return specificData;
     }
   } catch (error) {
-    console.log(`⚠️ Pas de données spécifiques dans ${tableName}:`, error.message);
+    console.log(`Pas de données spécifiques dans ${tableName}:`, error.message);
   }
   
   return {};
@@ -334,7 +334,7 @@ async function getAllItems(req, res) {
     const limit = parseInt(req.query.limit) || 50;
     const offset = parseInt(req.query.offset) || 0;
     
-    console.log(`➡️ GET /api/items/all - Limit: ${limit}, Offset: ${offset}`);
+    console.log(`GET /api/items/all - Limit: ${limit}, Offset: ${offset}`);
     
     const query = `
       SELECT * FROM tbl_items
@@ -349,7 +349,7 @@ async function getAllItems(req, res) {
     const countResult = await client.query(countQuery);
     const total = parseInt(countResult.rows[0].total);
     
-    console.log(`✅ ${result.rows.length} items récupérés sur ${total}`);
+    console.log(`${result.rows.length} items récupérés sur ${total}`);
     
     res.status(200).json({
       success: true,
@@ -380,7 +380,7 @@ async function deleteItem(req, res) {
   
   try {
     const itemId = req.params.id;
-    console.log(`➡️ DELETE /api/items/delete/${itemId}`);
+    console.log(`DELETE /api/items/delete/${itemId}`);
     
     const query = 'DELETE FROM tbl_items WHERE item_id = $1 RETURNING *';
     const result = await client.query(query, [itemId]);
@@ -392,7 +392,7 @@ async function deleteItem(req, res) {
       });
     }
     
-    console.log(`✅ Item ${itemId} supprimé (CASCADE vers tables spécifiques)`);
+    console.log(`Item ${itemId} supprimé (CASCADE vers tables spécifiques)`);
     
     res.status(200).json({
       success: true,

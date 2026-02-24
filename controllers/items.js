@@ -144,7 +144,7 @@ const itemsController = {
           RETURNING *
         `;
         
-        console.log('📝 Exécution UPDATE dans tbl_items');
+        console.log(' Exécution UPDATE dans tbl_items');
         const result = await client.query(updateQuery, values);
         
         if (result.rows.length === 0) {
@@ -166,7 +166,7 @@ const itemsController = {
       // 3. Récupérer l'item mis à jour
       const updatedItem = await client.query('SELECT * FROM tbl_items WHERE item_id = $1', [itemId]);
       
-      console.log('✅ Item mis à jour avec succès');
+      console.log('Item mis à jour avec succès');
       res.json({
         success: true,
         message: 'Item mis à jour avec succès',
@@ -306,7 +306,7 @@ const itemsController = {
       const searchPattern = `%${searchTerm}%`;
       const result = await client.query(query, [searchPattern]);
       
-      console.log(`✅ ${result.rows.length} items trouvés`);
+      console.log(`${result.rows.length} items trouvés`);
       res.json({
         success: true,
         count: result.rows.length,
@@ -331,7 +331,7 @@ const itemsController = {
     
     try {
       const type = req.params.type;
-      console.log('➡️ GET /api/items/type/' + type);
+      console.log('GET /api/items/type/' + type);
       
       const query = `
         SELECT * FROM tbl_items
@@ -341,7 +341,7 @@ const itemsController = {
       
       const result = await client.query(query, [type]);
       
-      console.log(`✅ ${result.rows.length} items de type "${type}" trouvés`);
+      console.log(`${result.rows.length} items de type "${type}" trouvés`);
       res.json({
         success: true,
         count: result.rows.length,
@@ -366,7 +366,7 @@ const itemsController = {
     
     try {
       const status = req.params.status;
-      console.log('➡️ GET /api/items/status/' + status);
+      console.log('GET /api/items/status/' + status);
       
       const query = `
         SELECT * FROM tbl_items
@@ -376,7 +376,7 @@ const itemsController = {
       
       const result = await client.query(query, [status]);
       
-      console.log(`✅ ${result.rows.length} items avec statut "${status}" trouvés`);
+      console.log(`${result.rows.length} items avec statut "${status}" trouvés`);
       res.json({
         success: true,
         count: result.rows.length,
@@ -400,7 +400,7 @@ const itemsController = {
     const client = await pool.connect();
     
     try {
-      console.log('➡️ GET /api/items/statistics');
+      console.log('GET /api/items/statistics');
       
       const [totalResult, byTypeResult, byStatusResult] = await Promise.all([
         client.query('SELECT COUNT(*) as total FROM tbl_items'),
@@ -418,7 +418,7 @@ const itemsController = {
         `)
       ]);
       
-      console.log('✅ Statistiques récupérées avec succès');
+      console.log('Statistiques récupérées avec succès');
       res.json({
         success: true,
         data: {
@@ -444,7 +444,7 @@ const itemsController = {
     const client = await pool.connect();
     
     try {
-      console.log('➡️ POST /api/items/batch');
+      console.log('POST /api/items/batch');
       console.log(`Nombre d'items à créer: ${req.body.length}`);
       
       if (!Array.isArray(req.body)) {
@@ -476,7 +476,7 @@ const itemsController = {
       
       await client.query('COMMIT');
       
-      console.log(`✅ ${results.length} items créés avec succès`);
+      console.log(`${results.length} items créés avec succès`);
       res.status(201).json({
         success: true,
         message: `${results.length} items créés avec succès`,
@@ -567,9 +567,9 @@ async function insertSpecificData(client, itemId, formulaireType, data) {
     ON CONFLICT (item_id) DO UPDATE SET ${updateClause}
   `;
   
-  console.log(`📝 Insertion dans ${tableName}`);
+  console.log(`Insertion dans ${tableName}`);
   await client.query(query, values);
-  console.log(`✅ Données spécifiques insérées dans ${tableName}`);
+  console.log(`Données spécifiques insérées dans ${tableName}`);
 }
 
 // Mettre à jour la table spécifique
@@ -599,14 +599,14 @@ async function updateSpecificData(client, itemId, formulaireType, data) {
       tableName = 'tbl_suggestion_achat';
       break;
     default:
-      console.log('⚠️ Type de formulaire non reconnu:', formulaireType);
+      console.log('Type de formulaire non reconnu:', formulaireType);
       return;
   }
   
   const filteredData = cleanEmptyFields(data);
   
   if (Object.keys(filteredData).length === 0) {
-    console.log('⚠️ Aucune donnée spécifique à mettre à jour');
+    console.log('Aucune donnée spécifique à mettre à jour');
     return;
   }
   
@@ -624,9 +624,9 @@ async function updateSpecificData(client, itemId, formulaireType, data) {
       WHERE item_id = $${entries.length + 1}
     `;
     
-    console.log(`📝 Mise à jour dans ${tableName}`);
+    console.log(`Mise à jour dans ${tableName}`);
     await client.query(updateQuery, values);
-    console.log(`✅ Données spécifiques mises à jour dans ${tableName}`);
+    console.log(`Données spécifiques mises à jour dans ${tableName}`);
   } else {
     await insertSpecificData(client, itemId, formulaireType, filteredData);
   }
@@ -668,16 +668,16 @@ async function getSpecificData(client, itemId, formulaireType) {
     
     if (result.rows.length > 0) {
       const { item_id, ...specificData } = result.rows[0];
-      console.log(`✅ Données spécifiques récupérées de ${tableName}`);
+      console.log(`Données spécifiques récupérées de ${tableName}`);
       return specificData;
     }
   } catch (error) {
-    console.log(`⚠️ Pas de données spécifiques dans ${tableName}:`, error.message);
+    console.log(`Pas de données spécifiques dans ${tableName}:`, error.message);
   }
   
   return {};
 }
 
-console.log('✅ Contrôleur items initialisé avec succès');
+console.log('Contrôleur items initialisé avec succès');
 
 module.exports = itemsController;

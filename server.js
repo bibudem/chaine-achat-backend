@@ -74,7 +74,8 @@ app.use((req, res, next) => {
 });
 
 // Trust proxy
-app.set('trust proxy', true);
+//app.set('trust proxy', true);
+app.set('trust proxy', false);
 
 // Rate limiting si présent
 if (validationMiddleware?.apiLimiter) {
@@ -98,6 +99,7 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
 
 /* ---------------------- GESTION DES ERREURS ----------------------- */
 if (validationMiddleware?.errorHandler) {
