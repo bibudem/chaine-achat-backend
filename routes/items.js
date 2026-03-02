@@ -71,6 +71,20 @@ router.get('/type/:type', itemsController.getItemsByType);
 // FILTER BY STATUS - Filtrer par statut
 router.get('/status/:status', itemsController.getItemsByStatus);
 
+// ==================== FOURNISSEURS (chargement dynamique) ====================
+let lstFournisseursController;
+try {
+  lstFournisseursController = require('../controllers/lstFournisseurs');
+  console.log('✅ Contrôleur lstFournisseurs chargé');
+} catch (error) {
+  console.error('❌ Erreur chargement contrôleur fournisseurs:', error.message);
+  lstFournisseursController = {
+    getAll: (req, res) => res.status(500).json({ error: 'Contrôleur non disponible' })
+  };
+}
+
+router.get('/fournisseurs', lstFournisseursController.getAll);
+
 // ==================== ROUTE DE TEST ====================
 
 // Route de test pour vérifier que les routes fonctionnent

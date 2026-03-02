@@ -4,7 +4,7 @@ const express = require('express');
 console.log('Démarrage du serveur...');
 
 /* ---------------------- IMPORTS ----------------------- */
-let itemsRoutes, homeRoutes, validationMiddleware, rapportsRoutes, reponsesRoutes;
+let itemsRoutes, homeRoutes, validationMiddleware, rapportsRoutes, reponsesRoutes, lstFournisseursRoutes ;
 
 try {
   itemsRoutes = require('./routes/items');
@@ -43,6 +43,14 @@ try {
   console.log('Routes reponses chargées');
 } catch (e) {
   console.error('❌ Erreur chargement routes reponses:', e.message);
+  process.exit(1);
+}
+
+try {
+  lstFournisseursRoutes = require('./routes/lstFournisseurs');
+  console.log('Routes fournisseurs chargées');
+} catch (e) {
+  console.error('❌ Erreur chargement routes fournisseurs:', e.message);
   process.exit(1);
 }
 
@@ -90,6 +98,8 @@ if (homeRoutes) app.use('/home', homeRoutes);
 app.use('/rapports', rapportsRoutes);
 
 app.use('/reponses', reponsesRoutes);
+
+app.use('/lst-fournisseurs', lstFournisseursRoutes);
 
 /* ---------------------- ROUTE DE SANTÉ ----------------------- */
 app.get('/health', (req, res) => {
