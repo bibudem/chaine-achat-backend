@@ -1,14 +1,18 @@
 const express = require('express');
-
+const router  = express.Router();
 const homeController = require('../controllers/home');
 
-const router = express.Router();
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   ROUTES HOME / DASHBOARD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
+// GET /home/all          → dashboard + graphiques (appel unique depuis Angular)
+router.get('/all',       homeController.getAllData);
 
+// GET /home/dashboard    → statistiques du tableau de bord seulement
+router.get('/dashboard', homeController.getCount);
 
-router.get('/count', homeController.getCount);
-
-router.get('/graphique', homeController.getGraphiqueDonnees);
-
+// GET /home/graph        → données graphiques seulement
+router.get('/graph',     homeController.getGraphiqueDonnees);
 
 module.exports = router;
