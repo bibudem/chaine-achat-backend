@@ -1,5 +1,7 @@
 require('dotenv').config();
 const express = require('express');
+const router  = express.Router();
+const multer  = require('multer');
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -21,12 +23,13 @@ function loadModule(path, label, { required = true } = {}) {
   }
 }
 
-const itemsRoutes          = loadModule('./routes/items',           'Routes items');
-const rapportsRoutes       = loadModule('./routes/rapports',        'Routes rapports');
-const reponsesRoutes       = loadModule('./routes/reponses',        'Routes réponses');
-const lstFournisseursRoutes = loadModule('./routes/lstFournisseurs','Routes fournisseurs');
-const homeRoutes           = loadModule('./routes/home',            'Routes home');
-const validationMiddleware = loadModule('./middleware/validation.middleware', 'Middleware validation');
+const itemsRoutes           = loadModule('./routes/items',           'Routes items');
+const rapportsRoutes        = loadModule('./routes/rapports',        'Routes rapports');
+const reponsesRoutes        = loadModule('./routes/reponses',        'Routes réponses');
+const lstFournisseursRoutes = loadModule('./routes/lstFournisseurs', 'Routes fournisseurs');
+const homeRoutes            = loadModule('./routes/home',            'Routes home');
+const importRoutes          = loadModule('./routes/imports',         'Routes import');
+const validationMiddleware  = loadModule('./middleware/validation.middleware', 'Middleware validation');
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    MIDDLEWARES GLOBAUX
@@ -61,6 +64,7 @@ app.use('/items',           itemsRoutes);
 app.use('/rapports',        rapportsRoutes);
 app.use('/reponses',        reponsesRoutes);
 app.use('/lst-fournisseurs', lstFournisseursRoutes);
+app.use('/import', importRoutes);
 app.use('/home', homeRoutes);
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

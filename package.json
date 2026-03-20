@@ -32,6 +32,7 @@
     "json-stringify-safe": "^5.0.1",
     "json-web-token": "^3.2.0",
     "jwt-simple": "^0.5.6",
+    "multer": "^2.1.1",
     "mysql": "^2.18.1",
     "mysql2": "^3.15.3",
     "node-browser-history": "^2.4.6",
@@ -52,7 +53,8 @@
     "request-promise": "^0.0.1",
     "sqlstring": "^2.3.2",
     "superagent": "^6.1.0",
-    "tunnel": "0.0.6"
+    "tunnel": "0.0.6",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
