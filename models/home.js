@@ -40,9 +40,9 @@ const Logs = {
           COUNT(*)                                                                    AS total_items,
           COUNT(DISTINCT demandeur)                                                   AS unique_demandeurs,
           COUNT(*) FILTER (WHERE date_creation >= CURRENT_DATE - INTERVAL '7 days')  AS items_last_7_days,
-          COUNT(*) FILTER (WHERE statut_bibliotheque = 'En traitement')              AS en_traitement,
-          COUNT(*) FILTER (WHERE statut_bibliotheque = 'Terminé')                    AS termines,
-          COUNT(*) FILTER (WHERE statut_bibliotheque = 'En attente')                 AS en_attente
+          COUNT(*) FILTER (WHERE statut_acq = 'En traitement')              AS en_traitement,
+          COUNT(*) FILTER (WHERE statut_acq = 'Complété')                    AS termines,
+          COUNT(*) FILTER (WHERE statut_acq = 'En attente')                 AS en_attente
         FROM filtered
       ),
 
