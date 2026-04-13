@@ -10,7 +10,8 @@ const N8N_NOUVEL_ACHAT_URL = process.env.N8N_NOUVEL_ACHAT_URL
   || 'http://host.docker.internal:5678/webhook/nouvel-achat';
 
 function redirect(res, url) {
-  res.writeHead(302, { 'Location': url });
+  const decodedUrl = decodeURIComponent(url);
+  res.writeHead(302, { Location: decodedUrl });
   return res.end();
 }
 
@@ -85,12 +86,12 @@ const ReponsesController = {
         itemId = await ReponsesModel.insererSuggestionApresApprobation(reponse);
       }
 
-      console.log(`[suggestion] décision [${statut}] — #${id} — item_id: ${itemId}`);
-      return redirect(res, `${APP_URL}/items?decision=${statut}&ref=${id}`);
+      console.log(`[suggestion] décision [${encodeURIComponent(statut)}] — #${encodeURIComponent(id)} — item_id: ${encodeURIComponent(id)}`);
+      return redirect(res, `${APP_URL}/items?decision=${encodeURIComponent(statut)}&ref=${encodeURIComponent(id)}`);
 
     } catch (err) {
       console.error('[suggestion] decisionSuggestion:', err);
-      return redirect(res, `${APP_URL}/items?decision=erreur&ref=${id}`);
+      return redirect(res, `${APP_URL}/items?decision=erreur&ref=${encodeURIComponent(id)}`);
     }
   },
 
@@ -185,15 +186,19 @@ const ReponsesController = {
       }
 
       console.log(`[nouvel-achat] décision [${statut}] — #${id} — item_id: ${itemId}`);
-      return redirect(res, `${APP_URL}/items?decision=${statut}&ref=${id}`);
+      return redirect(
+                    res,
+                    `${APP_URL}/items?decision=${encodeURIComponent(statut)}&ref=${encodeURIComponent(id)}`
+                  );
 
     } catch (err) {
       console.error('[nouvel-achat] decisionNouvelAchat:', err);
-      return redirect(res, `${APP_URL}/items?decision=erreur&ref=${id}`);
+      return redirect(res, `${APP_URL}/items?decision=erreur&ref=${encodeURIComponent(id)}`);
     }
   },
 
   // ═══════════════════════════════════════════════════════════
+  
   // LECTURE (commun)
   // ═══════════════════════════════════════════════════════════
   async getAll(req, res) {
