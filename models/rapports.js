@@ -54,7 +54,7 @@ function isValidDateString(s) {
 }
 
 function normalizePagination(limit, offset) {
-  const l = Math.min(Math.max(parseInt(limit ?? 100, 10) || 100, 1), 500);
+  const l = Math.min(Math.max(parseInt(limit ?? 500, 10) || 500, 1), 5000);
   const o = Math.max(parseInt(offset ?? 0, 10) || 0, 0);
   return { limit: l, offset: o };
 }
@@ -138,6 +138,17 @@ async function rapportDetaille(filters = {}, limit = 100, offset = 0) {
       conditions.push(`${dbCol} ILIKE $${idx}`);
       params.push(`%${value}%`);
       idx += 1;
+      continue;
+    }
+
+    // Valeurs multiples (virgule-séparées) → = ANY(ARRAY[...])
+    if (typeof value === 'string' && value.includes(',')) {
+      const values = value.split(',').map(v => v.trim()).filter(Boolean);
+      if (values.length > 0) {
+        conditions.push(`${dbCol} = ANY($${idx})`);
+        params.push(values);
+        idx += 1;
+      }
       continue;
     }
 
