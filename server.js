@@ -29,6 +29,7 @@ const reponsesRoutes        = loadModule('./routes/reponses',        'Routes ré
 const lstFournisseursRoutes = loadModule('./routes/lstFournisseurs', 'Routes fournisseurs');
 const homeRoutes            = loadModule('./routes/home',            'Routes home');
 const importRoutes          = loadModule('./routes/imports',         'Routes import');
+const configRoutes          = loadModule('./routes/config',          'Routes config');
 const validationMiddleware  = loadModule('./middleware/validation.middleware', 'Middleware validation');
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -65,7 +66,8 @@ app.use('/rapports',        rapportsRoutes);
 app.use('/reponses',        reponsesRoutes);
 app.use('/lst-fournisseurs', lstFournisseursRoutes);
 app.use('/import', importRoutes);
-app.use('/home', homeRoutes);
+app.use('/home',   homeRoutes);
+app.use('/config', configRoutes);
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ROUTE DE SANTÉ

@@ -6,7 +6,7 @@ const ReponsesController = require('../controllers/reponses');
 // SUGGESTION D'ACHAT
 // ─────────────────────────────────────────────────────────────
 router.post('/suggestion',          ReponsesController.createSuggestion);
-router.get('/decision-suggestion',  ReponsesController.decisionSuggestion);
+router.get('/suggestion_usagers',  ReponsesController.decisionSuggestion);
 
 // ─────────────────────────────────────────────────────────────
 // NOUVEL ACHAT UNIQUE
