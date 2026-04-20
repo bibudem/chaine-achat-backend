@@ -1,4 +1,5 @@
 const Logs = require('../models/home');
+const pool = require('../config/postgres.config');
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    HELPER — périodes autorisées (whitelist sécurité)
@@ -66,6 +67,24 @@ exports.getCount = async (req, res) => {
     sendSuccess(res, row.dashboard_data, `Données dashboard — période : ${period}`);
   } catch (err) {
     sendError(res, err, 'getCount');
+  }
+};
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   GET /home/type-counts  (toutes périodes confondues)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+exports.getTypeCounts = async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT formulaire_type, COUNT(*)::int AS count
+      FROM tbl_items
+      WHERE formulaire_type IS NOT NULL
+      GROUP BY formulaire_type
+      ORDER BY count DESC
+    `);
+    sendSuccess(res, rows, 'Comptages par type');
+  } catch (err) {
+    sendError(res, err, 'getTypeCounts');
   }
 };
 

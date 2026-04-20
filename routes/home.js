@@ -15,4 +15,7 @@ router.get('/dashboard', homeController.getCount);
 // GET /home/graph        → données graphiques seulement
 router.get('/graph',     homeController.getGraphiqueDonnees);
 
+// GET /home/type-counts  → comptage toutes périodes par formulaire_type
+router.get('/type-counts', homeController.getTypeCounts);
+
 module.exports = router;
