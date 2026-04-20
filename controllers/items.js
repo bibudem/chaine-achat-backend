@@ -224,54 +224,81 @@ const itemsController = {
   // ==================== READ ALL + PAGINATION ====================
   getAllItems: async (req, res) => {
     const client = await pool.connect();
-    
+
     try {
       console.log('➡️ GET /api/items/all');
-      
-      // Récupérer les paramètres de pagination depuis la query string
-      const limit = parseInt(req.query.limit) || 50;
-      const offset = parseInt(req.query.offset) || 0;
-      const page = Math.floor(offset / limit) + 1;
-      
-      const query = `
-        SELECT * FROM tbl_items
-        ORDER BY date_creation DESC
-        LIMIT $1 OFFSET $2
-      `;
-      
+
+      const limit  = Math.min(Math.max(parseInt(req.query.limit)  || 50, 1), 200);
+      const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+
+      const search          = (req.query.search          || '').trim();
+      const bibliotheque    = (req.query.bibliotheque    || '').trim();
+      const statut          = (req.query.statut          || '').trim();
+      const formulaire_type = (req.query.formulaire_type || '').trim();
+
+      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','isbn_issn','demandeur','bibliotheque','statut_bibliotheque','date_creation']);
+      const sortCol = SORT_COLS.has(req.query.sort) ? req.query.sort : 'date_creation';
+      const sortDir = req.query.order === 'asc' ? 'ASC' : 'DESC';
+
+      const conditions = [];
+      const params     = [];
+
+      if (search) {
+        params.push(`%${search}%`);
+        const i = params.length;
+        conditions.push(`(titre_document ILIKE $${i} OR isbn_issn ILIKE $${i} OR demandeur ILIKE $${i} OR editeur ILIKE $${i})`);
+      }
+      if (bibliotheque) {
+        params.push(bibliotheque);
+        conditions.push(`bibliotheque = $${params.length}`);
+      }
+      if (statut) {
+        params.push(statut);
+        conditions.push(`(statut_bibliotheque = $${params.length} OR statut_acq = $${params.length})`);
+      }
+      if (formulaire_type) {
+        params.push(formulaire_type);
+        conditions.push(`formulaire_type = $${params.length}`);
+      }
+
+      const where          = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      const filterParamLen = params.length;
+
+      params.push(limit, offset);
+      const dataQuery  = `SELECT * FROM tbl_items ${where} ORDER BY ${sortCol} ${sortDir} LIMIT $${filterParamLen + 1} OFFSET $${filterParamLen + 2}`;
+      const countQuery = `SELECT COUNT(*) AS total FROM tbl_items ${where}`;
+
       const [itemsResult, countResult] = await Promise.all([
-        client.query(query, [limit, offset]),
-        client.query('SELECT COUNT(*) as total FROM tbl_items')
+        client.query(dataQuery, params),
+        client.query(countQuery, params.slice(0, filterParamLen))
       ]);
-      
+
       const items = itemsResult.rows;
       const total = parseInt(countResult.rows[0].total);
-      
+      const page  = Math.floor(offset / limit) + 1;
+
       console.log(`✅ ${items.length} items récupérés sur ${total}`);
-      
+
       res.json({
         success: true,
         count: items.length,
-        total: total,
+        total,
         data: items,
         pagination: {
-          page: page,
-          limit: limit,
-          offset: offset,
+          page,
+          limit,
+          offset,
           totalPages: Math.ceil(total / limit),
-          hasNext: offset + limit < total,
+          hasNext:    offset + limit < total,
           hasPrevious: offset > 0,
-          next: offset + limit < total ? offset + limit : null,
+          next:     offset + limit < total ? offset + limit : null,
           previous: offset > 0 ? Math.max(0, offset - limit) : null
         }
       });
-      
+
     } catch (error) {
       console.error('❌ Erreur GET /all:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
+      res.status(500).json({ success: false, error: error.message });
     } finally {
       client.release();
     }
