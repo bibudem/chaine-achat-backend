@@ -70,6 +70,19 @@ app.use('/home',   homeRoutes);
 app.use('/config', configRoutes);
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   ROUTE RACINE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+app.get('/', (_req, res) => {
+  res.json({
+    projet: 'Chaîne d\'achat — Bibliothèques UdeM',
+    description: 'API de gestion des demandes d\'achat documentaire',
+    version: require('./package.json').version,
+    env: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString()
+  });
+});
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ROUTE DE SANTÉ
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 app.get('/health', (_req, res) => {
