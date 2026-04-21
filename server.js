@@ -118,11 +118,16 @@ if (validationMiddleware?.errorHandler) {
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   DÉMARRAGE
+   DÉMARRAGE — local ou Lambda
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-app.listen(port, () => {
-  console.log(`\n🚀 Serveur démarré sur le port ${port}`);
-  console.log(`   Environnement : ${process.env.NODE_ENV || 'development'}`);
-  console.log(`   URL           : http://localhost:${port}`);
-  console.log(`   Health check  : http://localhost:${port}/health\n`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(port, () => {
+    console.log(`\nServeur démarré sur le port ${port}`);
+    console.log(`   Environnement : ${process.env.NODE_ENV || 'development'}`);
+    console.log(`   URL           : http://localhost:${port}`);
+    console.log(`   Health check  : http://localhost:${port}/health\n`);
+  });
+}
+
+// Handler exporté pour AWS Lambda
+module.exports.handler = require('serverless-http')(app);

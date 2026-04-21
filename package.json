@@ -10,7 +10,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@supabase/supabase-js": "^2.81.1",
     "axios": "^1.13.2",
     "axios-https-proxy-fix": "^0.17.1",
     "body-parser": "^1.19.0",
@@ -51,6 +50,7 @@
     "proxy-check": "^1.0.8",
     "redis": "^4.0.1",
     "request-promise": "^0.0.1",
+    "serverless-http": "^3.2.0",
     "sqlstring": "^2.3.2",
     "superagent": "^6.1.0",
     "tunnel": "0.0.6",
