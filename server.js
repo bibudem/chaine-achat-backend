@@ -1,9 +1,7 @@
 if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config();
+  try { require('dotenv').config(); } catch { /* non disponible hors dev */ }
 }
 const express = require('express');
-const router  = express.Router();
-const multer  = require('multer');
 const app = express();
 const port = process.env.PORT || 3000;
 
