@@ -14,7 +14,7 @@ const pool = new Pool({
 
 // Vérification de la connexion
 pool.on('connect', () => {
-  console.log('✅ Connexion PostgreSQL établie');
+  console.log('Connexion PostgreSQL établie');
 });
 
 pool.on('error', (err) => {
