@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "package": "npm install --omit=dev && zip -r function.zip . --exclude '*.git*' --exclude '.env' --exclude '*.md' && npm install"
+    "package": "node pack.js"
   },
   "keywords": [],
   "author": "",

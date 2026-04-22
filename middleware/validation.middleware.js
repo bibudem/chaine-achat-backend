@@ -1,4 +1,3 @@
-require('dotenv').config();
 const rateLimit = require('express-rate-limit');
 
 // Middleware de limitation de débit (rate limiting)
