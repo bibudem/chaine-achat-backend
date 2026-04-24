@@ -28,44 +28,63 @@ const ReponsesModel = {
     try {
       await client.query('BEGIN');
 
-      const r = reponse.reponses || {};
+      // reponses peut être une string JSON (colonne TEXT) ou déjà un objet (JSONB)
+      const raw = reponse.reponses;
+      const r   = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
 
       // 1. tbl_items
       const { rows } = await client.query(
         `INSERT INTO tbl_items (
-          formulaire_type, titre_document, isbn_issn, editeur,
-          date_publication, categorie_document, demandeur,
-          note_commentaire, statut_acq, source_information
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          formulaire_type, priorite_demande,
+          titre_document, isbn_issn, editeur, date_publication,
+          categorie_document, format_support, source_information,
+          bibliotheque, demandeur,
+          note_commentaire, statut_bibliotheque
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
         RETURNING item_id`,
         [
           "Suggestion d'achat",
-          r.titre        || null,
-          r.isbnIssn     || null,
-          r.editeur      || null,
-          r.annee        || null,
-          r.typeDocument || null,
+          r.priorite_demande   || 'Urgent',
+          r.titre_document     || null,
+          r.isbn_issn          || null,
+          r.editeur            || null,
+          r.date_publication   || null,
+          r.categorie_document || null,
+          r.format_support     || null,
+          r.source_information || null,
+          r.bibliotheque       || null,
           reponse.usager_nom,
-          r.notes        || null,
-          'approuve',
-          reponse.usager_courriel
+          r.note_commentaire   || null,
+          'En attente en bibliothèque'
         ]
       );
       const itemId = rows[0].item_id;
 
       // 2. tbl_suggestion_achat
       await client.query(
-        `INSERT INTO tbl_suggestion_achat (item_id, justification, recommandation)
-         VALUES ($1, $2, $3)`,
-        [itemId, r.notes || null, r.reserver === 'oui']
+        `INSERT INTO tbl_suggestion_achat (
+          item_id, auteur, usager_statut, usager_faculte, usager_courriel,
+          bibliothecaire_disciplinaire, aviser_reservation, aviser_reception, date_requise_cours
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [
+          itemId,
+          r.auteur                         || null,
+          reponse.usager_statut            || null,
+          r.usager_faculte                 || null,
+          reponse.usager_courriel          || null,
+          r.bibliothecaire_disciplinaire   || null,
+          r.aviser_reservation === true || r.aviser_reservation === 'true',
+          r.aviser_reception   === true || r.aviser_reception   === 'true',
+          r.date_requise_cours             || null
+        ]
       );
 
       // 3. Réserve de cours (optionnel)
-      if (r.mettreReserve) {
+      if (r.reserve_cours === true || r.reserve_cours === 'true') {
         await client.query(
           `INSERT INTO tbl_nouvel_achat_unique (item_id, reserve_cours, reserve_cours_sigle)
            VALUES ($1, true, $2)`,
-          [itemId, r.sigleCours || null]
+          [itemId, r.reserve_cours_sigle || null]
         );
       }
 
@@ -175,9 +194,8 @@ const ReponsesModel = {
         `INSERT INTO tbl_nouvel_achat_unique (
           item_id, projets_speciaux, type_monographie, format_electronique,
           reserve_cours, reserve_cours_sigle, reserve_cours_session,
-          reserve_cours_enseignant, bordereau_imprime, categorie_depense,
-          note_catalogueur_droit
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          reserve_cours_enseignant, bordereau_imprime
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
         ON CONFLICT (item_id) DO UPDATE SET
           type_monographie         = EXCLUDED.type_monographie,
           format_electronique      = EXCLUDED.format_electronique,
@@ -187,16 +205,14 @@ const ReponsesModel = {
           reserve_cours_enseignant = EXCLUDED.reserve_cours_enseignant`,
         [
           itemId,
-          s.projets_speciaux                                 || null,  // $2
-          s.type_monographie                                 || null,  // $3
-          s.format_electronique                              || null,  // $4
-          s.reserve_cours === true || s.reserve_cours === 'true',      // $5
+          s.projets_speciaux                                   || null,  // $2
+          s.type_monographie                                   || null,  // $3
+          s.format_electronique                                || null,  // $4
+          s.reserve_cours === true || s.reserve_cours === 'true',        // $5
           s.reserve_cours ? (s.reserve_cours_sigle      || null) : null, // $6
           s.reserve_cours ? (s.reserve_cours_session    || null) : null, // $7
           s.reserve_cours ? (s.reserve_cours_enseignant || null) : null, // $8
-          s.bordereau_imprime      || null,                             // $9
-          s.categorie_depense      || null,                             // $10
-          s.note_catalogueur_droit || null                              // $11
+          s.bordereau_imprime                                  || null   // $9
         ]
       );
 
