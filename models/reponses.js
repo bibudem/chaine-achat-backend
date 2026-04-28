@@ -228,6 +228,42 @@ const ReponsesModel = {
   },
 
   // ═══════════════════════════════════════════════════════════
+  // GÉNÉRIQUE — nouveaux types de formulaires
+  // ═══════════════════════════════════════════════════════════
+
+  async createFormulaire({ type_formulaire, usager_nom, usager_courriel, usager_statut, reponses }) {
+    const { rows } = await pool.query(
+      `INSERT INTO tbl_reponses
+         (type_formulaire, usager_nom, usager_courriel, usager_statut, reponses)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, "dateA"`,
+      [type_formulaire, usager_nom, usager_courriel, usager_statut, JSON.stringify(reponses || {})]
+    );
+    return rows[0];
+  },
+
+  async insererApresApprobation(reponse) {
+    const { insertItemBase, insertSpecificData } = require('./import');
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const raw  = reponse.reponses;
+      const data = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+      const baseData     = { formulaire_type: reponse.type_formulaire, ...(data.baseData || {}) };
+      const specificData = data.specificData || {};
+      const itemId = await insertItemBase(client, baseData);
+      await insertSpecificData(client, itemId, reponse.type_formulaire, specificData);
+      await client.query('COMMIT');
+      return itemId;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════
   // COMMUN — décision + lecture
   // ═══════════════════════════════════════════════════════════
 

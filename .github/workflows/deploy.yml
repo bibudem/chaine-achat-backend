@@ -22,10 +22,20 @@ jobs:
           cache: 'npm'
 
       - name: Installation des dépendances de production
-        run: npm install --omit=dev
+        run: npm ci --omit=dev
 
       - name: Création du ZIP de déploiement
-        run: zip -r function.zip . --exclude "*.git*" --exclude ".env" --exclude "*.md" --exclude "pack.js" --exclude "function.zip"
+        run: |
+          zip -r function.zip . \
+            --exclude "*.git*" \
+            --exclude ".env" \
+            --exclude "*.md" \
+            --exclude "pack.js" \
+            --exclude "function.zip" \
+            --exclude "scratch/*" \
+            --exclude "view/*" \
+            --exclude "auth/*"
+          echo "Taille du ZIP : $(du -sh function.zip | cut -f1)"
 
       - name: Configuration des credentials AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -39,3 +49,9 @@ jobs:
           aws lambda update-function-code \
             --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} \
             --zip-file fileb://function.zip
+
+      - name: Attendre la fin de la mise à jour
+        run: |
+          aws lambda wait function-updated \
+            --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }}
+          echo "Lambda mise à jour avec succès"

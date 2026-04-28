@@ -1,33 +1,23 @@
 const { Pool } = require('pg');
 
-// Configuration PostgreSQL depuis les variables d'environnement
+// En Lambda, chaque instance peut gérer plusieurs requêtes simultanées sur une même
+// invocation chaude — max:2 évite l'épuisement de connexions côté RDS.
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5432,
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'chaineAchat',
-  max: 20, // nombre maximum de clients dans le pool
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Vérification de la connexion
-pool.on('connect', () => {
-  console.log('Connexion PostgreSQL établie');
+  host:     process.env.DB_HOST,
+  port:     parseInt(process.env.DB_PORT || '5432', 10),
+  user:     process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  max: 2,
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 5000,
+  allowExitOnIdle: true,
+  // SSL requis par RDS en production, désactivé en local
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
 pool.on('error', (err) => {
-  console.error('❌ Erreur PostgreSQL:', err);
-});
-
-// Test de connexion au démarrage
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Échec de connexion à PostgreSQL:', err.message);
-  } else {
-    console.log('PostgreSQL connecté avec succès à', res.rows[0].now);
-  }
+  console.error('❌ Erreur PostgreSQL inattendue:', err.message);
 });
 
 module.exports = pool;

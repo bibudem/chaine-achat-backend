@@ -1,4 +1,4 @@
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const pool = require('../config/postgres.config');
 
 console.log('🎯 Chargement du contrôleur import...');
@@ -13,6 +13,46 @@ const TYPE_TABLE_MAP = {
   'Springer':             'tbl_springer',
   "Suggestion d'achat":  'tbl_suggestion_achat',
 };
+
+// ==================== HELPER : LIRE EXCEL DEPUIS BUFFER ====================
+// Retourne un tableau d'objets { [en-tête]: valeur } identique à xlsx sheet_to_json
+async function bufferToRows(buffer) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const worksheet = workbook.worksheets[0];
+
+  // row.values est un tableau 1-indexé (index 0 = undefined)
+  const headers = [];
+  const rows    = [];
+
+  worksheet.eachRow((row, rowNumber) => {
+    const values = row.values;
+    if (rowNumber === 1) {
+      for (let i = 1; i < values.length; i++) {
+        headers[i] = values[i] != null ? String(values[i]) : null;
+      }
+    } else {
+      const rowData = {};
+      for (let i = 1; i < headers.length; i++) {
+        const header = headers[i];
+        if (!header) continue;
+        let value = values[i] ?? null;
+        // Résoudre les résultats de formule
+        if (value != null && typeof value === 'object' && 'result' in value) {
+          value = value.result ?? null;
+        }
+        // Convertir les dates en YYYY-MM-DD (équivalent xlsx raw:false)
+        if (value instanceof Date) {
+          value = value.toISOString().split('T')[0];
+        }
+        rowData[header] = value;
+      }
+      rows.push(rowData);
+    }
+  });
+
+  return rows;
+}
 
 // ==================== IMPORT EXCEL ====================
 async function importExcel(req, res) {
@@ -42,12 +82,7 @@ async function importExcel(req, res) {
     console.log(`📄 Fichier reçu: ${req.file.originalname} (${(req.file.size / 1024).toFixed(1)} Ko)`);
 
     // ── Parser le fichier Excel ─────────────────────────────────
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
-    const sheetName = workbook.SheetNames[0];
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
-      defval: null,
-      raw:    false
-    });
+    const rows = await bufferToRows(req.file.buffer);
 
     console.log(`📊 ${rows.length} ligne(s) détectée(s) dans le fichier`);
 
@@ -113,7 +148,7 @@ async function importExcel(req, res) {
 }
 
 // ==================== TÉLÉCHARGER LE MODÈLE EXCEL ====================
-function downloadTemplate(req, res) {
+async function downloadTemplate(req, res) {
   try {
     const formulaireType = decodeURIComponent(req.params.type);
     console.log(`➡️ GET /import/template/${formulaireType}`);
@@ -128,15 +163,17 @@ function downloadTemplate(req, res) {
       });
     }
 
-    // Créer un classeur avec une seule feuille contenant les en-têtes
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet([config.templateHeaders]);
+    const workbook  = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Import');
 
-    // Mettre en forme les en-têtes (largeur auto)
-    ws['!cols'] = config.templateHeaders.map(() => ({ wch: 22 }));
-    XLSX.utils.book_append_sheet(wb, ws, 'Import');
+    // Définir les colonnes avec en-têtes et largeur fixe
+    worksheet.columns = config.templateHeaders.map(header => ({
+      header,
+      key:   header,
+      width: 22,
+    }));
 
-    const buffer   = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const buffer   = Buffer.from(await workbook.xlsx.writeBuffer());
     const filename = `modele_import_${formulaireType.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`;
 
     console.log(`✅ Modèle généré: ${filename}`);

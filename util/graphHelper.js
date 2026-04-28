@@ -3,8 +3,6 @@
  * See LICENSE in the project root for license information.
  */
 
-const request = require('superagent');
-
 /**
  * Generates a GET request the user endpoint.
  * @param {string} accessToken The access token to send with the request.

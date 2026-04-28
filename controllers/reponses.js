@@ -3,16 +3,48 @@ const axios         = require('axios');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:4200';
 
-const N8N_SUGGESTION_URL = process.env.N8N_SUGGESTION_URL
-  || 'http://host.docker.internal:5678/webhook/suggestion';
+const PROD_BASE = 'https://ordo.bib.umontreal.ca/webhook';
 
-const N8N_NOUVEL_ACHAT_URL = process.env.N8N_NOUVEL_ACHAT_URL
-  || 'http://host.docker.internal:5678/webhook/nouvel-achat';
+const N8N_SUGGESTION_URL          = process.env.N8N_SUGGESTION_URL          || `${PROD_BASE}/suggestion`;
+const N8N_NOUVEL_ACHAT_URL        = process.env.N8N_NOUVEL_ACHAT_URL        || `${PROD_BASE}/nouvel-achat`;
+const N8N_NOUVEL_ABONNEMENT_URL   = process.env.N8N_NOUVEL_ABONNEMENT_URL   || `${PROD_BASE}/nouvel-abonnement`;
+const N8N_MODIFICATION_CCOL_URL   = process.env.N8N_MODIFICATION_CCOL_URL   || `${PROD_BASE}/modification-ccol`;
+const N8N_PEB_TIPASA_URL          = process.env.N8N_PEB_TIPASA_URL          || `${PROD_BASE}/peb-tipasa-numerique`;
+const N8N_REQUETE_ACQ_URL         = process.env.N8N_REQUETE_ACQ_URL         || `${PROD_BASE}/requete-acq`;
+const N8N_SPRINGER_URL            = process.env.N8N_SPRINGER_URL            || `${PROD_BASE}/springer`;
 
 function redirect(res, url) {
   const decodedUrl = decodeURIComponent(url);
   res.writeHead(302, { Location: decodedUrl });
   return res.end();
+}
+
+function _notifierN8n(url, logKey, rowId, payload) {
+  axios.post(url, payload)
+    .then(() => console.log(`✅ [${logKey}] n8n notifié — #${rowId}`))
+    .catch(err => {
+      console.error(`❌ [${logKey}] n8n non joignable:`, err.message);
+      if (err.response) console.error(`   Status: ${err.response.status}`);
+    });
+}
+
+async function _creerFormulaire(req, res, typeFormulaire, n8nUrl, logKey) {
+  const { usager_nom, usager_courriel, usager_statut, reponses } = req.body;
+  if (!reponses?.baseData) return res.status(400).json({ error: 'reponses.baseData est requis.' });
+  try {
+    const row = await ReponsesModel.createFormulaire({
+      type_formulaire: typeFormulaire, usager_nom, usager_courriel, usager_statut, reponses
+    });
+    const { baseData = {}, specificData = {} } = reponses;
+    _notifierN8n(n8nUrl, logKey, row.id, {
+      id: row.id, type_formulaire: typeFormulaire,
+      usager_nom, usager_courriel, usager_statut, baseData, specificData
+    });
+    return res.status(201).json({ message: `${typeFormulaire} enregistré.`, id: row.id, dateA: row.dateA });
+  } catch (err) {
+    console.error(`[${logKey}] create:`, err);
+    return res.status(500).json({ error: "Erreur lors de l'enregistrement." });
+  }
 }
 
 const ReponsesController = {
@@ -86,7 +118,7 @@ const ReponsesController = {
         itemId = await ReponsesModel.insererSuggestionApresApprobation(reponse);
       }
 
-      console.log(`[suggestion] décision [${encodeURIComponent(statut)}] — #${encodeURIComponent(id)} — item_id: ${encodeURIComponent(id)}`);
+      console.log(`[suggestion] décision [${encodeURIComponent(statut)}] — #${encodeURIComponent(id)} — item_id: ${itemId}`);
       return redirect(res, `${APP_URL}/items?decision=${encodeURIComponent(statut)}&ref=${encodeURIComponent(id)}`);
 
     } catch (err) {
@@ -198,7 +230,64 @@ const ReponsesController = {
   },
 
   // ═══════════════════════════════════════════════════════════
-  
+  // NOUVEAUX TYPES DE FORMULAIRES
+  // POST /reponses/nouvel-abonnement
+  // POST /reponses/modification-ccol
+  // POST /reponses/peb-tipasa
+  // POST /reponses/requete-acq
+  // POST /reponses/springer
+  // ═══════════════════════════════════════════════════════════
+
+  async createNouvelAbonnement(req, res) {
+    return _creerFormulaire(req, res, 'Nouvel abonnement', N8N_NOUVEL_ABONNEMENT_URL, 'nouvel-abonnement');
+  },
+
+  async createModificationCcol(req, res) {
+    return _creerFormulaire(req, res, 'Modification CCOL', N8N_MODIFICATION_CCOL_URL, 'modification-ccol');
+  },
+
+  async createPebTipasa(req, res) {
+    return _creerFormulaire(req, res, 'PEB Tipasa numérique', N8N_PEB_TIPASA_URL, 'peb-tipasa');
+  },
+
+  async createRequeteAcq(req, res) {
+    return _creerFormulaire(req, res, 'Requête ACQ', N8N_REQUETE_ACQ_URL, 'requete-acq');
+  },
+
+  async createSpringer(req, res) {
+    return _creerFormulaire(req, res, 'Springer', N8N_SPRINGER_URL, 'springer');
+  },
+
+  // GET /reponses/decision?id=&action=approuver|refuser&courriel_admin=
+  async decisionFormulaire(req, res) {
+    const { id, action, courriel_admin } = req.query;
+    if (!id || !action) return res.status(400).send('Paramètres manquants.');
+    if (!['approuver', 'refuser'].includes(action)) return res.status(400).send('Action invalide.');
+    try {
+      const statut  = action === 'approuver' ? 'approuve' : 'refuse';
+      const reponse = await ReponsesModel.updateDecision({
+        id,
+        statut_approbation: statut,
+        courriel_admin:     courriel_admin || null,
+        commentaire_admin:  action === 'approuver'
+          ? "Approuvé par l'administrateur"
+          : "Refusé par l'administrateur"
+      });
+      if (!reponse) return res.status(404).send('Réponse introuvable.');
+      let itemId = null;
+      if (action === 'approuver') {
+        itemId = await ReponsesModel.insererApresApprobation(reponse);
+      }
+      console.log(`[${reponse.type_formulaire}] décision [${statut}] — #${id} — item_id: ${itemId}`);
+      return redirect(res, `${APP_URL}/items?decision=${encodeURIComponent(statut)}&ref=${encodeURIComponent(id)}`);
+    } catch (err) {
+      console.error('[decisionFormulaire]:', err);
+      return redirect(res, `${APP_URL}/items?decision=erreur&ref=${encodeURIComponent(id)}`);
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════
+
   // LECTURE (commun)
   // ═══════════════════════════════════════════════════════════
   async getAll(req, res) {

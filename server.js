@@ -35,8 +35,10 @@ const validationMiddleware  = loadModule('./middleware/validation.middleware', '
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    MIDDLEWARES GLOBAUX
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-app.set('trust proxy', false);
-app.use(express.json());
+// Lambda 1 niveau de proxy
+app.set('trust proxy', 1);
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Logger
 app.use((req, _res, next) => {
@@ -86,13 +88,17 @@ app.get('/', (_req, res) => {
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ROUTE DE SANTÉ
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-app.get('/health', (_req, res) => {
-  res.json({
-    status: 'OK',
-    message: 'Serveur en fonctionnement',
-    env: process.env.NODE_ENV || 'development',
-    timestamp: new Date().toISOString()
-  });
+app.get('/health', async (_req, res) => {
+  const status = { status: 'OK', env: process.env.NODE_ENV || 'development', timestamp: new Date().toISOString() };
+  try {
+    const pool = require('./config/postgres.config');
+    await pool.query('SELECT 1');
+    status.db = 'OK';
+  } catch (e) {
+    status.db = 'ERREUR';
+    status.status = 'DEGRADED';
+  }
+  res.status(status.status === 'OK' ? 200 : 503).json(status);
 });
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
