@@ -243,7 +243,7 @@ const ReponsesController = {
   },
 
   async createModificationCcol(req, res) {
-    return _creerFormulaire(req, res, 'Modification CCOL', N8N_MODIFICATION_CCOL_URL, 'modification-ccol');
+    return _creerFormulaire(req, res, 'Modification et CCOL', N8N_MODIFICATION_CCOL_URL, 'modification-ccol');
   },
 
   async createPebTipasa(req, res) {

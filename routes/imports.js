@@ -66,7 +66,7 @@ router.get('/test', (req, res) => {
       import:   'POST /import/:type  (multipart/form-data, champ "file")',
       template: 'GET  /import/template/:type',
       types: [
-        'Modification CCOL',
+        'Modification et CCOL',
         'Nouvel abonnement',
         'Nouvel achat unique',
         'PEB Tipasa numérique',

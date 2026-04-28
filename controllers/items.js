@@ -547,7 +547,7 @@ async function insertSpecificData(client, itemId, formulaireType, data) {
   let tableName;
   
   switch(formulaireType) {
-    case 'Modification CCOL':
+    case 'Modification et CCOL':
       tableName = 'tbl_modification_ccol';
       break;
     case 'Nouvel abonnement':
@@ -572,9 +572,9 @@ async function insertSpecificData(client, itemId, formulaireType, data) {
       console.log('⚠️ Type de formulaire non reconnu:', formulaireType);
       return;
   }
-  
+
   const filteredData = cleanEmptyFields(data);
-  
+
   if (Object.keys(filteredData).length === 0) {
     console.log('⚠️ Aucune donnée spécifique à insérer');
     return;
@@ -604,7 +604,7 @@ async function updateSpecificData(client, itemId, formulaireType, data) {
   let tableName;
   
   switch(formulaireType) {
-    case 'Modification CCOL':
+    case 'Modification et CCOL':
       tableName = 'tbl_modification_ccol';
       break;
     case 'Nouvel abonnement':
@@ -629,9 +629,9 @@ async function updateSpecificData(client, itemId, formulaireType, data) {
       console.log('Type de formulaire non reconnu:', formulaireType);
       return;
   }
-  
+
   const filteredData = cleanEmptyFields(data);
-  
+
   if (Object.keys(filteredData).length === 0) {
     console.log('Aucune donnée spécifique à mettre à jour');
     return;
@@ -664,7 +664,7 @@ async function getSpecificData(client, itemId, formulaireType) {
   let tableName;
   
   switch(formulaireType) {
-    case 'Modification CCOL':
+    case 'Modification et CCOL':
       tableName = 'tbl_modification_ccol';
       break;
     case 'Nouvel abonnement':

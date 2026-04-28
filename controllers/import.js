@@ -5,7 +5,7 @@ console.log('🎯 Chargement du contrôleur import...');
 
 // ==================== MAPPING TYPE → TABLE ====================
 const TYPE_TABLE_MAP = {
-  'Modification CCOL':    'tbl_modification_ccol',
+  'Modification et CCOL': 'tbl_modification_ccol',
   'Nouvel abonnement':    'tbl_nouvel_abonnement',
   'Nouvel achat unique':  'tbl_nouvel_achat_unique',
   'PEB Tipasa numérique': 'tbl_peb_tipasa_numerique',
@@ -340,8 +340,8 @@ const IMPORT_CONFIGS = {
     })
   },
 
-  // ── Modification CCOL ────────────────────────────────────────────
-  'Modification CCOL': {
+  // ── Modification et CCOL ─────────────────────────────────────────
+  'Modification et CCOL': {
     requiredColumns: [...COMMON_REQUIRED, 'Précision demande'],
     templateHeaders: [
       'Priorité', ...COMMON_HEADERS,

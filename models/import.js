@@ -8,7 +8,7 @@ console.log('📦 Chargement du modèle import...');
 
 // ==================== MAPPING TYPE → TABLE ====================
 const TYPE_TABLE_MAP = {
-  'Modification CCOL':    'tbl_modification_ccol',
+  'Modification et CCOL': 'tbl_modification_ccol',
   'Nouvel abonnement':    'tbl_nouvel_abonnement',
   'Nouvel achat unique':  'tbl_nouvel_achat_unique',
   'PEB Tipasa numérique': 'tbl_peb_tipasa_numerique',

@@ -26,7 +26,7 @@ module.exports = class Mail {
 
   // send mail with defined transport object
   let info = await transporter.sendMail({
-    from: '"Matrice des periodiques " <bibsys@bib.umontreal.ca>', // sender address
+    from: '"Chaine acaht " <bibsys@bib.umontreal.ca>', // sender address
     to: courriel, // list of receivers
     subject: sujet, // Subject line
     text: "", // plain text body
