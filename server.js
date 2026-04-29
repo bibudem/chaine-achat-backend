@@ -26,7 +26,6 @@ function loadModule(path, label, { required = true } = {}) {
 const itemsRoutes           = loadModule('./routes/items',           'Routes items');
 const rapportsRoutes        = loadModule('./routes/rapports',        'Routes rapports');
 const reponsesRoutes        = loadModule('./routes/reponses',        'Routes réponses');
-const lstFournisseursRoutes = loadModule('./routes/lstFournisseurs', 'Routes fournisseurs');
 const homeRoutes            = loadModule('./routes/home',            'Routes home');
 const importRoutes          = loadModule('./routes/imports',         'Routes import');
 const configRoutes          = loadModule('./routes/config',          'Routes config');
@@ -67,7 +66,6 @@ if (validationMiddleware?.apiLimiter) {
 app.use('/items',           itemsRoutes);
 app.use('/rapports',        rapportsRoutes);
 app.use('/reponses',        reponsesRoutes);
-app.use('/lst-fournisseurs', lstFournisseursRoutes);
 app.use('/import', importRoutes);
 app.use('/home',   homeRoutes);
 app.use('/config', configRoutes);
