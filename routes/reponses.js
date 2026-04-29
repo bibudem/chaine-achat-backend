@@ -46,6 +46,12 @@ router.post('/springer',            ReponsesController.createSpringer);
 router.get('/decision',             ReponsesController.decisionFormulaire);
 
 // ─────────────────────────────────────────────────────────────
+// DÉCISION API JSON (pour n8n)
+// PUT /reponses/:id/decision
+// ─────────────────────────────────────────────────────────────
+router.put('/:id/decision',         ReponsesController.decisionApi);
+
+// ─────────────────────────────────────────────────────────────
 // LECTURE (commun)
 // ─────────────────────────────────────────────────────────────
 router.get('/',                     ReponsesController.getAll);

@@ -35,27 +35,32 @@ const ReponsesModel = {
       // 1. tbl_items
       const { rows } = await client.query(
         `INSERT INTO tbl_items (
-          formulaire_type, priorite_demande,
+          formulaire_type, date_creation, priorite_demande,
           titre_document, isbn_issn, editeur, date_publication,
-          categorie_document, format_support, source_information,
+          categorie_document, format_support, format_pret_numerique,
+          nombre_utilisateurs, source_information,
           bibliotheque, demandeur,
-          note_commentaire, statut_bibliotheque
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          note_commentaire, statut_bibliotheque, statut_acq
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
         RETURNING item_id`,
         [
-          "Suggestion d'achat",
-          r.priorite_demande   || 'Urgent',
-          r.titre_document     || null,
-          r.isbn_issn          || null,
-          r.editeur            || null,
-          r.date_publication   || null,
-          r.categorie_document || null,
-          r.format_support     || null,
-          r.source_information || null,
-          r.bibliotheque       || null,
-          reponse.usager_nom,
-          r.note_commentaire   || null,
-          'En attente en bibliothèque'
+          "Suggestion d'achat",                              // $1
+          new Date(),                                        // $2
+          r.priorite_demande    || 'Urgent',                // $3
+          r.titre_document      || null,                     // $4
+          r.isbn_issn           || null,                     // $5
+          r.editeur             || null,                     // $6
+          r.date_publication    || null,                     // $7
+          r.categorie_document  || null,                     // $8
+          r.format_support      || null,                     // $9
+          r.format_electronique || null,                     // $10
+          r.acces_electronique  || null,                     // $11
+          r.source_information  || null,                     // $12
+          r.bibliotheque        || null,                     // $13
+          reponse.usager_nom    || null,                     // $14
+          r.note_commentaire    || null,                     // $15
+          'En attente en bibliothèque',                      // $16
+          'En attente'                                       // $17
         ]
       );
       const itemId = rows[0].item_id;
@@ -65,7 +70,13 @@ const ReponsesModel = {
         `INSERT INTO tbl_suggestion_achat (
           item_id, auteur, usager_statut, usager_faculte, usager_courriel,
           bibliothecaire_disciplinaire, aviser_reservation, aviser_reception, date_requise_cours
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ON CONFLICT (item_id) DO UPDATE SET
+          auteur                       = EXCLUDED.auteur,
+          bibliothecaire_disciplinaire = EXCLUDED.bibliothecaire_disciplinaire,
+          aviser_reservation           = EXCLUDED.aviser_reservation,
+          aviser_reception             = EXCLUDED.aviser_reception,
+          date_requise_cours           = EXCLUDED.date_requise_cours`,
         [
           itemId,
           r.auteur                         || null,
@@ -83,10 +94,19 @@ const ReponsesModel = {
       if (r.reserve_cours === true || r.reserve_cours === 'true') {
         await client.query(
           `INSERT INTO tbl_nouvel_achat_unique (item_id, reserve_cours, reserve_cours_sigle)
-           VALUES ($1, true, $2)`,
+           VALUES ($1, true, $2)
+           ON CONFLICT (item_id) DO UPDATE SET
+             reserve_cours       = true,
+             reserve_cours_sigle = EXCLUDED.reserve_cours_sigle`,
           [itemId, r.reserve_cours_sigle || null]
         );
       }
+
+      // 4. Lier la réponse à l'item créé
+      await client.query(
+        'UPDATE tbl_reponses SET item_id_cree = $1 WHERE id = $2',
+        [itemId, reponse.id]
+      );
 
       await client.query('COMMIT');
       return itemId;
@@ -125,8 +145,10 @@ const ReponsesModel = {
     try {
       await client.query('BEGIN');
 
-      const b = reponse.reponses?.baseData     || {};
-      const s = reponse.reponses?.specificData || {};
+      const raw  = reponse.reponses;
+      const data = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+      const b = data.baseData     || {};
+      const s = data.specificData || {};
 
       // 1. tbl_items
       const { rows } = await client.query(
@@ -137,7 +159,7 @@ const ReponsesModel = {
           format_support, format_pret_numerique, nombre_utilisateurs,
           lien_plateforme, nombre_titres_inclus, periode_couverte,
           prix_cad, devise_originale, prix_devise_originale,
-          fonds_budgetaire, fonds_sn_projet, fournisseur,
+          fonds_budgetaire, fonds_sn_projet,
           bibliotheque, localisation_emplacement, demandeur,
           personne_a_aviser_activation, projet_special,
           statut_bibliotheque, statut_acq, note_commentaire,
@@ -147,7 +169,7 @@ const ReponsesModel = {
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
           $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
           $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,
-          $31,$32,$33,$34,$35,NOW()
+          $31,$32,$33,$34,NOW()
         ) RETURNING item_id`,
         [
           'Nouvel achat unique',                                                     // $1
@@ -171,20 +193,19 @@ const ReponsesModel = {
           b.prix_devise_originale        || null,                                   // $19
           b.fonds_budgetaire             || null,                                   // $20
           b.fonds_sn_projet              || null,                                   // $21
-          b.fournisseur                  || null,                                   // $22
-          b.bibliotheque                 || null,                                   // $23
-          b.localisation_emplacement     || null,                                   // $24
-          reponse.usager_nom             || b.demandeur         || null,            // $25
-          b.personne_a_aviser_activation || reponse.usager_courriel || null,        // $26
-          b.projet_special               || null,                                   // $27
-          'Soumis aux ACQ : Formulaire complété et prêt à être transmis aux Acquisitions.', // $28
-          'En attente de traitement aux ACQ',                                       // $29
-          b.note_commentaire             || null,                                   // $30
-          b.id_ressource                 || null,                                   // $31
-          b.catalogue                    || null,                                   // $32
-          b.creation_notice_dtdm === true || b.creation_notice_dtdm === 'true',    // $33
-          b.note_dtdm                    || null,                                   // $34
-          reponse.usager_nom             || null                                    // $35
+          b.bibliotheque                 || null,                                   // $22
+          b.localisation_emplacement     || null,                                   // $23
+          reponse.usager_nom             || b.demandeur         || null,            // $24
+          b.personne_a_aviser_activation || reponse.usager_courriel || null,        // $25
+          b.projet_special               || null,                                   // $26
+          'Soumis aux ACQ : Formulaire complété et prêt à être transmis aux Acquisitions.', // $27
+          'En attente de traitement aux ACQ',                                       // $28
+          b.note_commentaire             || null,                                   // $29
+          b.id_ressource                 || null,                                   // $30
+          b.catalogue                    || null,                                   // $31
+          b.creation_notice_dtdm === true || b.creation_notice_dtdm === 'true',    // $32
+          b.note_dtdm                    || null,                                   // $33
+          reponse.usager_nom             || null                                    // $34
         ]
       );
       const itemId = rows[0].item_id;
@@ -214,6 +235,12 @@ const ReponsesModel = {
           s.reserve_cours ? (s.reserve_cours_enseignant || null) : null, // $8
           s.bordereau_imprime                                  || null   // $9
         ]
+      );
+
+      // Lier la réponse à l'item créé
+      await client.query(
+        'UPDATE tbl_reponses SET item_id_cree = $1 WHERE id = $2',
+        [itemId, reponse.id]
       );
 
       await client.query('COMMIT');
@@ -253,6 +280,10 @@ const ReponsesModel = {
       const specificData = data.specificData || {};
       const itemId = await insertItemBase(client, baseData);
       await insertSpecificData(client, itemId, reponse.type_formulaire, specificData);
+      await client.query(
+        'UPDATE tbl_reponses SET item_id_cree = $1 WHERE id = $2',
+        [itemId, reponse.id]
+      );
       await client.query('COMMIT');
       return itemId;
     } catch (err) {

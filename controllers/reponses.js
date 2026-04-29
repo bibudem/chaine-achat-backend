@@ -113,8 +113,8 @@ const ReponsesController = {
 
       if (!reponse) return res.status(404).send('Réponse introuvable.');
 
-      let itemId = null;
-      if (action === 'approuver') {
+      let itemId = reponse.item_id_cree || null;
+      if (action === 'approuver' && !reponse.item_id_cree) {
         itemId = await ReponsesModel.insererSuggestionApresApprobation(reponse);
       }
 
@@ -212,8 +212,8 @@ const ReponsesController = {
 
       if (!reponse) return res.status(404).send('Réponse introuvable.');
 
-      let itemId = null;
-      if (action === 'approuver') {
+      let itemId = reponse.item_id_cree || null;
+      if (action === 'approuver' && !reponse.item_id_cree) {
         itemId = await ReponsesModel.insererNouvelAchatApresApprobation(reponse);
       }
 
@@ -274,15 +274,82 @@ const ReponsesController = {
           : "Refusé par l'administrateur"
       });
       if (!reponse) return res.status(404).send('Réponse introuvable.');
-      let itemId = null;
-      if (action === 'approuver') {
-        itemId = await ReponsesModel.insererApresApprobation(reponse);
+      let itemId = reponse.item_id_cree || null;
+      if (action === 'approuver' && !reponse.item_id_cree) {
+        const type = reponse.type_formulaire;
+        if (type === 'Nouvel achat unique') {
+          itemId = await ReponsesModel.insererNouvelAchatApresApprobation(reponse);
+        } else if (type === "Suggestion d'achat") {
+          itemId = await ReponsesModel.insererSuggestionApresApprobation(reponse);
+        } else {
+          itemId = await ReponsesModel.insererApresApprobation(reponse);
+        }
       }
       console.log(`[${reponse.type_formulaire}] décision [${statut}] — #${id} — item_id: ${itemId}`);
       return redirect(res, `${APP_URL}/items?decision=${encodeURIComponent(statut)}&ref=${encodeURIComponent(id)}`);
     } catch (err) {
       console.error('[decisionFormulaire]:', err);
       return redirect(res, `${APP_URL}/items?decision=erreur&ref=${encodeURIComponent(id)}`);
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // DÉCISION API — JSON (pour n8n, pas de redirect navigateur)
+  // PUT /reponses/:id/decision
+  // Body : { action: "approuver"|"refuser", courriel_admin: "..." }
+  // ═══════════════════════════════════════════════════════════
+  async decisionApi(req, res) {
+    const { id } = req.params;
+    const { action, courriel_admin } = req.body;
+
+    if (!id || !action)
+      return res.status(400).json({ success: false, error: 'Paramètres manquants (id, action).' });
+    if (!['approuver', 'refuser'].includes(action))
+      return res.status(400).json({ success: false, error: 'Action invalide.' });
+
+    try {
+      const statut = action === 'approuver' ? 'approuve' : 'refuse';
+
+      const reponse = await ReponsesModel.updateDecision({
+        id,
+        statut_approbation: statut,
+        courriel_admin:     courriel_admin || null,
+        commentaire_admin:  action === 'approuver'
+          ? "Approuvé par l'administrateur"
+          : "Refusé par l'administrateur"
+      });
+
+      if (!reponse)
+        return res.status(404).json({ success: false, error: 'Réponse introuvable.' });
+
+      let itemId = reponse.item_id_cree || null;
+      if (action === 'approuver' && !reponse.item_id_cree) {
+        const type = reponse.type_formulaire;
+        if (type === 'Nouvel achat unique') {
+          itemId = await ReponsesModel.insererNouvelAchatApresApprobation(reponse);
+        } else if (type === "Suggestion d'achat") {
+          itemId = await ReponsesModel.insererSuggestionApresApprobation(reponse);
+        } else {
+          itemId = await ReponsesModel.insererApresApprobation(reponse);
+        }
+      }
+
+      const raw  = reponse.reponses;
+      const data = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+      const base = data.baseData || data;
+
+      return res.json({
+        success: true,
+        statut,
+        itemId,
+        nom:      reponse.usager_nom      || base.demandeur                    || '',
+        courriel: reponse.usager_courriel || base.personne_a_aviser_activation || '',
+        titre:    base.titre_document     || 'Sans titre'
+      });
+
+    } catch (err) {
+      console.error('[decisionApi]', err);
+      return res.status(500).json({ success: false, error: err.message });
     }
   },
 
