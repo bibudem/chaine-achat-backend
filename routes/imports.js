@@ -70,9 +70,9 @@ router.get('/test', (req, res) => {
         'Nouvel abonnement',
         'Nouvel achat unique',
         'PEB Tipasa numérique',
-        'Requête ACQ',
+        'Requête ACQ Accessibilité',
         'Springer',
-        "Suggestion d'achat"
+        "Suggestion d'achat - Usager"
       ]
     }
   });

@@ -13,7 +13,7 @@ const ReponsesModel = {
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, "dateA"`,
       [
-        "Suggestion d'achat",
+        "Suggestion d'achat - Usager",
         usager_nom,
         usager_courriel,
         usager_statut,
@@ -37,14 +37,14 @@ const ReponsesModel = {
         `INSERT INTO tbl_items (
           formulaire_type, date_creation, priorite_demande,
           titre_document, isbn_issn, editeur, date_publication,
-          categorie_document, format_support, format_pret_numerique,
+          categorie_document, format_support, 
           nombre_utilisateurs, source_information,
           bibliotheque, demandeur,
           note_commentaire, statut_bibliotheque, statut_acq
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
         RETURNING item_id`,
         [
-          "Suggestion d'achat",                              // $1
+          "Suggestion d'achat - Usager",                              // $1
           new Date(),                                        // $2
           r.priorite_demande    || 'Urgent',                // $3
           r.titre_document      || null,                     // $4
@@ -156,20 +156,22 @@ const ReponsesModel = {
           formulaire_type, date_creation, priorite_demande,
           titre_document, sous_titre, isbn_issn, editeur,
           date_publication, source_information, categorie_document,
-          format_support, format_pret_numerique, nombre_utilisateurs,
+          format_support, nombre_utilisateurs,
           lien_plateforme, nombre_titres_inclus, periode_couverte,
           prix_cad, devise_originale, prix_devise_originale,
           fonds_budgetaire, fonds_sn_projet,
           bibliotheque, localisation_emplacement, demandeur,
-          personne_a_aviser_activation, projet_special,
+          personne_a_aviser_nom,
+          personne_a_aviser_courriel,
+          format_pret_numerique,
           statut_bibliotheque, statut_acq, note_commentaire,
-          id_ressource, catalogue, creation_notice_dtdm,
+          catalogue, creation_notice_dtdm,
           note_dtdm, utilisateur_modification, date_modification
         ) VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
           $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
           $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,
-          $31,$32,$33,$34,NOW()
+          $31,$32,$33,NOW()
         ) RETURNING item_id`,
         [
           'Nouvel achat unique',                                                     // $1
@@ -183,29 +185,28 @@ const ReponsesModel = {
           b.source_information           || null,                                   // $9
           b.categorie_document           || null,                                   // $10
           b.format_support               || null,                                   // $11
-          b.format_pret_numerique        || null,                                   // $12
-          b.nombre_utilisateurs          || null,                                   // $13
-          b.lien_plateforme              || null,                                   // $14
-          b.nombre_titres_inclus         || null,                                   // $15
-          b.periode_couverte             || null,                                   // $16
-          b.prix_cad                     || null,                                   // $17
-          b.devise_originale             || null,                                   // $18
-          b.prix_devise_originale        || null,                                   // $19
-          b.fonds_budgetaire             || null,                                   // $20
-          b.fonds_sn_projet              || null,                                   // $21
-          b.bibliotheque                 || null,                                   // $22
-          b.localisation_emplacement     || null,                                   // $23
-          reponse.usager_nom             || b.demandeur         || null,            // $24
-          b.personne_a_aviser_activation || reponse.usager_courriel || null,        // $25
-          b.projet_special               || null,                                   // $26
+          b.nombre_utilisateurs          || null,                                   // $12
+          b.lien_plateforme              || null,                                   // $13
+          b.nombre_titres_inclus         || null,                                   // $14
+          b.periode_couverte             || null,                                   // $15
+          b.prix_cad                     || null,                                   // $16
+          b.devise_originale             || null,                                   // $17
+          b.prix_devise_originale        || null,                                   // $18
+          b.fonds_budgetaire             || null,                                   // $19
+          b.fonds_sn_projet              || null,                                   // $20
+          b.bibliotheque                 || null,                                   // $21
+          b.localisation_emplacement     || null,                                   // $22
+          reponse.usager_nom             || b.demandeur                  || null,   // $23
+          b.personne_a_aviser_nom        || null,                                   // $24
+          b.personne_a_aviser_courriel   || reponse.usager_courriel      || null,   // $25
+          b.format_pret_numerique        || null,                                   // $26
           'Soumis aux ACQ : Formulaire complété et prêt à être transmis aux Acquisitions.', // $27
           'En attente de traitement aux ACQ',                                       // $28
           b.note_commentaire             || null,                                   // $29
-          b.id_ressource                 || null,                                   // $30
-          b.catalogue                    || null,                                   // $31
-          b.creation_notice_dtdm === true || b.creation_notice_dtdm === 'true',    // $32
-          b.note_dtdm                    || null,                                   // $33
-          reponse.usager_nom             || null                                    // $34
+          b.catalogue                    || null,                                   // $30
+          b.creation_notice_dtdm === true || b.creation_notice_dtdm === 'true',    // $31
+          b.note_dtdm                    || null,                                   // $32
+          reponse.usager_nom             || null                                    // $33
         ]
       );
       const itemId = rows[0].item_id;
@@ -213,11 +214,13 @@ const ReponsesModel = {
       // 2. tbl_nouvel_achat_unique
       await client.query(
         `INSERT INTO tbl_nouvel_achat_unique (
-          item_id, projets_speciaux, type_monographie, format_electronique,
+          item_id, id_ressource, projets_speciaux,
+          type_monographie, format_electronique,
           reserve_cours, reserve_cours_sigle, reserve_cours_session,
           reserve_cours_enseignant, bordereau_imprime
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         ON CONFLICT (item_id) DO UPDATE SET
+          id_ressource             = EXCLUDED.id_ressource,
           type_monographie         = EXCLUDED.type_monographie,
           format_electronique      = EXCLUDED.format_electronique,
           reserve_cours            = EXCLUDED.reserve_cours,
@@ -226,14 +229,15 @@ const ReponsesModel = {
           reserve_cours_enseignant = EXCLUDED.reserve_cours_enseignant`,
         [
           itemId,
-          s.projets_speciaux                                   || null,  // $2
-          s.type_monographie                                   || null,  // $3
-          s.format_electronique                                || null,  // $4
-          s.reserve_cours === true || s.reserve_cours === 'true',        // $5
-          s.reserve_cours ? (s.reserve_cours_sigle      || null) : null, // $6
-          s.reserve_cours ? (s.reserve_cours_session    || null) : null, // $7
-          s.reserve_cours ? (s.reserve_cours_enseignant || null) : null, // $8
-          s.bordereau_imprime                                  || null   // $9
+          s.id_ressource                                       || null,  // $2
+          s.projets_speciaux                                   || null,  // $3
+          s.type_monographie                                   || null,  // $4
+          s.format_electronique                                || null,  // $5
+          s.reserve_cours === true || s.reserve_cours === 'true',        // $6
+          s.reserve_cours ? (s.reserve_cours_sigle      || null) : null, // $7
+          s.reserve_cours ? (s.reserve_cours_session    || null) : null, // $8
+          s.reserve_cours ? (s.reserve_cours_enseignant || null) : null, // $9
+          s.bordereau_imprime                                  || null   // $10
         ]
       );
 

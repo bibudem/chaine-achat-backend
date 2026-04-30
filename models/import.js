@@ -12,9 +12,9 @@ const TYPE_TABLE_MAP = {
   'Nouvel abonnement':    'tbl_nouvel_abonnement',
   'Nouvel achat unique':  'tbl_nouvel_achat_unique',
   'PEB Tipasa numérique': 'tbl_peb_tipasa_numerique',
-  'Requête ACQ':          'tbl_requete_acq',
+  'Requête ACQ Accessibilité': 'tbl_requete_acq',
   'Springer':             'tbl_springer',
-  "Suggestion d'achat":  'tbl_suggestion_achat',
+  "Suggestion d'achat - Usager": 'tbl_suggestion_achat',
 };
 
 // ==================== INSERT ITEM DE BASE ====================

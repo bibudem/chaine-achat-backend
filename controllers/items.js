@@ -559,13 +559,13 @@ async function insertSpecificData(client, itemId, formulaireType, data) {
     case 'PEB Tipasa numérique':
       tableName = 'tbl_peb_tipasa_numerique';
       break;
-    case 'Requête ACQ':
+    case 'Requête ACQ Accessibilité':
       tableName = 'tbl_requete_acq';
       break;
     case 'Springer':
       tableName = 'tbl_springer';
       break;
-    case 'Suggestion d\'achat':
+    case "Suggestion d'achat - Usager":
       tableName = 'tbl_suggestion_achat';
       break;
     default:
@@ -616,13 +616,13 @@ async function updateSpecificData(client, itemId, formulaireType, data) {
     case 'PEB Tipasa numérique':
       tableName = 'tbl_peb_tipasa_numerique';
       break;
-    case 'Requête ACQ':
+    case 'Requête ACQ Accessibilité':
       tableName = 'tbl_requete_acq';
       break;
     case 'Springer':
       tableName = 'tbl_springer';
       break;
-    case 'Suggestion d\'achat':
+    case "Suggestion d'achat - Usager":
       tableName = 'tbl_suggestion_achat';
       break;
     default:
@@ -676,13 +676,13 @@ async function getSpecificData(client, itemId, formulaireType) {
     case 'PEB Tipasa numérique':
       tableName = 'tbl_peb_tipasa_numerique';
       break;
-    case 'Requête ACQ':
+    case 'Requête ACQ Accessibilité':
       tableName = 'tbl_requete_acq';
       break;
     case 'Springer':
       tableName = 'tbl_springer';
       break;
-    case 'Suggestion d\'achat':
+    case "Suggestion d'achat - Usager":
       tableName = 'tbl_suggestion_achat';
       break;
     default:

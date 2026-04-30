@@ -9,9 +9,9 @@ const TYPE_TABLE_MAP = {
   'Nouvel abonnement':    'tbl_nouvel_abonnement',
   'Nouvel achat unique':  'tbl_nouvel_achat_unique',
   'PEB Tipasa numérique': 'tbl_peb_tipasa_numerique',
-  'Requête ACQ':          'tbl_requete_acq',
+  'Requête ACQ Accessibilité': 'tbl_requete_acq',
   'Springer':             'tbl_springer',
-  "Suggestion d'achat":  'tbl_suggestion_achat',
+  "Suggestion d'achat - Usager": 'tbl_suggestion_achat',
 };
 
 // ==================== HELPER : LIRE EXCEL DEPUIS BUFFER ====================
@@ -252,16 +252,16 @@ function buildBaseData(row, formulaireType) {
     bibliotheque:                 row['Bibliothèque']           || null,
     localisation_emplacement:     row['Localisation']           || null,
     demandeur:                    row['Demandeur']              || null,
-    personne_a_aviser_activation: row['Personne à aviser']      || null,
-    projet_special:               row['Projet spécial']         || null,
+    personne_a_aviser_nom:        row['Personne à aviser — Nom']      || row['Personne à aviser'] || null,
+    personne_a_aviser_courriel:   row['Personne à aviser — Courriel'] || null,
     source_information:           row["Source d'information"]   || null,
     note_commentaire:             row['Note / Commentaire']     || null,
     creation_notice_dtdm:         parseBool(row['Création notice DTDM']),
     note_dtdm:                    row['Note DTDM']              || null,
     statut_bibliotheque:          row['Statut bibliothèque']    || null,
     statut_acq:                   row['Statut ACQ']             || null,
-    id_ressource:                 row['ID Ressource']           || null,
     catalogue:                    row['Catalogue']              || null,
+    format_pret_numerique:        row['Format PrêtNumérique']   || null,
   };
 }
 
@@ -293,9 +293,9 @@ const COMMON_HEADERS = [
   'Date de publication', 'Catégorie', 'Format / Support',
   'Fonds budgétaire', 'Fonds SN / Projet', 'Bibliothèque',
   'Localisation', 'Demandeur', 'Personne à aviser',
-  'Projet spécial', "Source d'information", 'Note / Commentaire',
+  "Source d'information", 'Note / Commentaire',
   'Création notice DTDM', 'Note DTDM',
-  'Statut bibliothèque', 'Statut ACQ', 'ID Ressource', 'Catalogue'
+  'Statut bibliothèque', 'Statut ACQ', 'Catalogue'
 ];
 
 const COMMON_REQUIRED = ['Titre', 'Demandeur', 'Bibliothèque'];
@@ -306,12 +306,13 @@ const IMPORT_CONFIGS = {
   'Nouvel achat unique': {
     requiredColumns: COMMON_REQUIRED,
     templateHeaders: [
-      'Priorité', ...COMMON_HEADERS,
+      'Priorité', ...COMMON_HEADERS, 'ID Ressource', 'Projet spécial', 'Format PrêtNumérique',
       'Type monographie', 'Format électronique',
       'Réserve de cours', 'Sigle cours', 'Session cours', 'Enseignant',
       'Bordereau imprimé', 'Catégorie dépense', 'Note catalogueur (droit)'
     ],
     buildSpecificData: (row) => ({
+      id_ressource:            row['ID Ressource']              || null,
       priorite_demande:        row['Priorité']                  || null,
       type_monographie:        row['Type monographie']          || null,
       format_electronique:     row['Format électronique']       || null,
@@ -329,7 +330,7 @@ const IMPORT_CONFIGS = {
   'Nouvel abonnement': {
     requiredColumns: [...COMMON_REQUIRED, 'Date début abonnement'],
     templateHeaders: [
-      'Priorité', ...COMMON_HEADERS,
+      'Priorité', ...COMMON_HEADERS, 'Projet spécial',
       'Date début abonnement', 'Type monographie', 'Collection', 'Catalogage'
     ],
     buildSpecificData: (row) => ({
@@ -344,7 +345,7 @@ const IMPORT_CONFIGS = {
   'Modification et CCOL': {
     requiredColumns: [...COMMON_REQUIRED, 'Précision demande'],
     templateHeaders: [
-      'Priorité', ...COMMON_HEADERS,
+      'Priorité', ...COMMON_HEADERS, 'Projet spécial',
       'Précision demande', 'Numéro OCLC', 'Date début abonnement',
       'Collection', 'Catalogage'
     ],
@@ -361,7 +362,7 @@ const IMPORT_CONFIGS = {
   'PEB Tipasa numérique': {
     requiredColumns: COMMON_REQUIRED,
     templateHeaders: [
-      'Priorité', ...COMMON_HEADERS,
+      'Priorité', ...COMMON_HEADERS, 'Projet spécial',
       'Type demande PEB', 'Référence Tipasa', 'Urgence'
     ],
     buildSpecificData: (row) => ({
@@ -371,11 +372,11 @@ const IMPORT_CONFIGS = {
     })
   },
 
-  // ── Requête ACQ ──────────────────────────────────────────────────
-  'Requête ACQ': {
+  // ── Requête ACQ Accessibilité ──────────────────────────────────────────────────
+  'Requête ACQ Accessibilité': {
     requiredColumns: COMMON_REQUIRED,
     templateHeaders: [
-      'Priorité', ...COMMON_HEADERS,
+      'Priorité', ...COMMON_HEADERS, 'Projet spécial', 'Format PrêtNumérique',
       'Type requête', 'Description requête', 'Action demandée'
     ],
     buildSpecificData: (row) => ({
@@ -389,18 +390,18 @@ const IMPORT_CONFIGS = {
   'Springer': {
     requiredColumns: [...COMMON_REQUIRED, 'Quantité'],
     templateHeaders: [
-      'Priorité', ...COMMON_HEADERS, 'Quantité'
+      'Priorité', ...COMMON_HEADERS, 'Projet spécial', 'Quantité'
     ],
     buildSpecificData: (row) => ({
-      quantite: parseInt(row['Quantité'], 10) || 1,
+      quantite:       parseInt(row['Quantité'], 10) || 1,
     })
   },
 
-  // ── Suggestion d'achat ───────────────────────────────────────────
-  "Suggestion d'achat": {
+  // ── Suggestion d'achat - Usager ───────────────────────────────────────────
+  "Suggestion d'achat - Usager": {
     requiredColumns: COMMON_REQUIRED,
     templateHeaders: [
-      'Priorité', ...COMMON_HEADERS,
+      'Priorité', ...COMMON_HEADERS, 'Projet spécial',
       'Justification', 'Public cible', 'Recommandation'
     ],
     buildSpecificData: (row) => ({
@@ -411,7 +412,7 @@ const IMPORT_CONFIGS = {
   },
 };
 
-console.log('✅ Contrôleur import initialisé avec succès');
+console.log('Contrôleur import initialisé avec succès');
 
 module.exports = {
   importExcel,

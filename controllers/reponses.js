@@ -71,7 +71,7 @@ const ReponsesController = {
       // Notifier n8n /suggestion (fire-and-forget)
       axios.post(N8N_SUGGESTION_URL, {
         id:              row.id,
-        type_formulaire: "Suggestion d'achat",
+        type_formulaire: "Suggestion d'achat - Usager",
         usager_nom,
         usager_courriel,
         usager_statut,
@@ -251,7 +251,7 @@ const ReponsesController = {
   },
 
   async createRequeteAcq(req, res) {
-    return _creerFormulaire(req, res, 'Requête ACQ', N8N_REQUETE_ACQ_URL, 'requete-acq');
+    return _creerFormulaire(req, res, 'Requête ACQ Accessibilité', N8N_REQUETE_ACQ_URL, 'requete-acq');
   },
 
   async createSpringer(req, res) {
@@ -279,7 +279,7 @@ const ReponsesController = {
         const type = reponse.type_formulaire;
         if (type === 'Nouvel achat unique') {
           itemId = await ReponsesModel.insererNouvelAchatApresApprobation(reponse);
-        } else if (type === "Suggestion d'achat") {
+        } else if (type === "Suggestion d'achat - Usager") {
           itemId = await ReponsesModel.insererSuggestionApresApprobation(reponse);
         } else {
           itemId = await ReponsesModel.insererApresApprobation(reponse);
@@ -327,7 +327,7 @@ const ReponsesController = {
         const type = reponse.type_formulaire;
         if (type === 'Nouvel achat unique') {
           itemId = await ReponsesModel.insererNouvelAchatApresApprobation(reponse);
-        } else if (type === "Suggestion d'achat") {
+        } else if (type === "Suggestion d'achat - Usager") {
           itemId = await ReponsesModel.insererSuggestionApresApprobation(reponse);
         } else {
           itemId = await ReponsesModel.insererApresApprobation(reponse);
@@ -343,7 +343,7 @@ const ReponsesController = {
         statut,
         itemId,
         nom:      reponse.usager_nom      || base.demandeur                    || '',
-        courriel: reponse.usager_courriel || base.personne_a_aviser_activation || '',
+        courriel: reponse.usager_courriel || base.personne_a_aviser_courriel || '',
         titre:    base.titre_document     || 'Sans titre'
       });
 
