@@ -10,16 +10,18 @@ const getConfig = async () => {
   return config;
 };
 
-/* ── Mise à jour d'une entrée ── */
+/* ── Upsert d'une entrée (INSERT si inexistante, UPDATE sinon) ── */
 const updateConfig = async (cle, valeur, modifie_par = null) => {
   const res = await pool.query(
-    `UPDATE public.tbl_app_config
-        SET valeur      = $1,
-            datem       = CURRENT_TIMESTAMP,
-            modifie_par = $2
-      WHERE cle = $3
-  RETURNING *`,
-    [valeur, modifie_par, cle]
+    `INSERT INTO public.tbl_app_config (cle, valeur, datem, modifie_par)
+     VALUES ($1, $2, CURRENT_TIMESTAMP, $3)
+     ON CONFLICT (cle)
+     DO UPDATE SET
+       valeur      = EXCLUDED.valeur,
+       datem       = CURRENT_TIMESTAMP,
+       modifie_par = EXCLUDED.modifie_par
+     RETURNING *`,
+    [cle, valeur, modifie_par]
   );
   return res.rows[0] ?? null;
 };
