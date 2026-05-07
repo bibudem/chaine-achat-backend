@@ -363,12 +363,14 @@ const IMPORT_CONFIGS = {
     requiredColumns: COMMON_REQUIRED,
     templateHeaders: [
       'Priorité', ...COMMON_HEADERS, 'Projet spécial',
-      'Type demande PEB', 'Référence Tipasa', 'Urgence'
+      'Type demande PEB', 'Référence Tipasa',
+      'GOBI version < 365 USD', 'ACQ Responsable courriel'
     ],
     buildSpecificData: (row) => ({
-      type_demande_peb:   row['Type demande PEB']  || null,
-      reference_tipasa:   row['Référence Tipasa']  || null,
-      urgence:            parseBool(row['Urgence']),
+      type_demande_peb:           row['Type demande PEB']         || null,
+      reference_tipasa:           row['Référence Tipasa']         || null,
+      gobi_version_moins_365_usd: row['GOBI version < 365 USD']  || null,
+      acq_responsable_courriel:   row['ACQ Responsable courriel'] || null,
     })
   },
 
@@ -377,12 +379,26 @@ const IMPORT_CONFIGS = {
     requiredColumns: COMMON_REQUIRED,
     templateHeaders: [
       'Priorité', ...COMMON_HEADERS, 'Projet spécial', 'Format PrêtNumérique',
-      'Type requête', 'Description requête', 'Action demandée'
+      'Référence usager', 'Besoin spécifique (format)', 'Type monographie',
+      'Fournisseur contacté sans succès', 'Exemplaire détenu',
+      'Vérification CAEB', 'Vérification SQLA', 'Vérification EMMA',
+      'Permalien SOFIA', 'Numérisation recommandée',
+      'Date demande éditeur', 'Date livraison estimée', 'ACQ Responsable courriel'
     ],
     buildSpecificData: (row) => ({
-      type_requete:        row['Type requête']         || null,
-      description_requete: row['Description requête']  || null,
-      action_demandee:     row['Action demandée']      || null,
+      reference_usager:                 row['Référence usager']               || null,
+      besoin_specifique_format:         row['Besoin spécifique (format)']     || null,
+      type_monographie:                 row['Type monographie']               || null,
+      fournisseur_contacte_sans_succes: row['Fournisseur contacté sans succès'] || null,
+      exemplaire_detenu:                row['Exemplaire détenu']              || null,
+      verification_caeb:                row['Vérification CAEB']             || null,
+      verification_sqla:                row['Vérification SQLA']             || null,
+      verification_emma:                row['Vérification EMMA']             || null,
+      permalien_sofia:                  row['Permalien SOFIA']               || null,
+      acq_numerisation_recommandee:     row['Numérisation recommandée']      || null,
+      acq_date_demande_editeur:         row['Date demande éditeur']          || null,
+      acq_date_livraison_estimee:       row['Date livraison estimée']        || null,
+      acq_responsable_courriel:         row['ACQ Responsable courriel']      || null,
     })
   },
 
