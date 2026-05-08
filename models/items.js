@@ -1,6 +1,5 @@
 // ============================================================
 // BACKEND — Champs suggestion d'achat (Node.js / Express + pg)
-// À intégrer dans votre contrôleur/route items existant
 // ============================================================
 
 // ──────────────────────────────────────────────────────────────
@@ -8,10 +7,7 @@
 // ──────────────────────────────────────────────────────────────
 function extractSuggestionAchatData(specificData = {}) {
   return {
-    justification:                specificData.justification                ?? null,
-    public_cible:                 specificData.public_cible                 ?? null,
-    recommandation:               specificData.recommandation               ?? false,
-    // Nouveaux champs
+    auteur:                       specificData.auteur                       ?? null,
     usager_nom:                   specificData.usager_nom                   ?? null,
     usager_statut:                specificData.usager_statut                ?? null,
     usager_faculte:               specificData.usager_faculte               ?? null,
@@ -20,6 +16,14 @@ function extractSuggestionAchatData(specificData = {}) {
     aviser_reservation:           specificData.aviser_reservation           ?? null,
     aviser_reception:             specificData.aviser_reception             ?? true,
     date_requise_cours:           specificData.date_requise_cours           || null,
+    note_usager:                  specificData.note_usager                  ?? null,
+    techdoc_suggestion_transmise: specificData.techdoc_suggestion_transmise ?? false,
+    acq_raison_annulation:        specificData.acq_raison_annulation        ?? null,
+    acq_isbn:                     specificData.acq_isbn                     ?? null,
+    reserve_cours:                specificData.reserve_cours                ?? false,
+    reserve_cours_sigle:          specificData.reserve_cours_sigle          ?? null,
+    bordereau_imprime:            specificData.bordereau_imprime            ?? 'Non',
+    acq_responsable_courriel:     specificData.acq_responsable_courriel     ?? null,
   };
 }
 
@@ -32,9 +36,7 @@ async function insertSuggestionAchat(client, itemId, specificData) {
   const query = `
     INSERT INTO tbl_suggestion_achat (
       item_id,
-      justification,
-      public_cible,
-      recommandation,
+      auteur,
       usager_nom,
       usager_statut,
       usager_faculte,
@@ -42,18 +44,42 @@ async function insertSuggestionAchat(client, itemId, specificData) {
       bibliothecaire_disciplinaire,
       aviser_reservation,
       aviser_reception,
-      date_requise_cours
+      date_requise_cours,
+      note_usager,
+      techdoc_suggestion_transmise,
+      acq_raison_annulation,
+      acq_isbn,
+      reserve_cours,
+      reserve_cours_sigle,
+      bordereau_imprime,
+      acq_responsable_courriel
     ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
     )
+    ON CONFLICT (item_id) DO UPDATE SET
+      auteur                       = EXCLUDED.auteur,
+      usager_nom                   = EXCLUDED.usager_nom,
+      usager_statut                = EXCLUDED.usager_statut,
+      usager_faculte               = EXCLUDED.usager_faculte,
+      usager_courriel              = EXCLUDED.usager_courriel,
+      bibliothecaire_disciplinaire = EXCLUDED.bibliothecaire_disciplinaire,
+      aviser_reservation           = EXCLUDED.aviser_reservation,
+      aviser_reception             = EXCLUDED.aviser_reception,
+      date_requise_cours           = EXCLUDED.date_requise_cours,
+      note_usager                  = EXCLUDED.note_usager,
+      techdoc_suggestion_transmise = EXCLUDED.techdoc_suggestion_transmise,
+      acq_raison_annulation        = EXCLUDED.acq_raison_annulation,
+      acq_isbn                     = EXCLUDED.acq_isbn,
+      reserve_cours                = EXCLUDED.reserve_cours,
+      reserve_cours_sigle          = EXCLUDED.reserve_cours_sigle,
+      bordereau_imprime            = EXCLUDED.bordereau_imprime,
+      acq_responsable_courriel     = EXCLUDED.acq_responsable_courriel
     RETURNING *;
   `;
 
   const values = [
     itemId,
-    d.justification,
-    d.public_cible,
-    d.recommandation,
+    d.auteur,
     d.usager_nom,
     d.usager_statut,
     d.usager_faculte,
@@ -62,6 +88,14 @@ async function insertSuggestionAchat(client, itemId, specificData) {
     d.aviser_reservation,
     d.aviser_reception,
     d.date_requise_cours,
+    d.note_usager,
+    d.techdoc_suggestion_transmise,
+    d.acq_raison_annulation,
+    d.acq_isbn,
+    d.reserve_cours,
+    d.reserve_cours_sigle,
+    d.bordereau_imprime,
+    d.acq_responsable_courriel,
   ];
 
   const result = await client.query(query, values);
@@ -76,26 +110,30 @@ async function updateSuggestionAchat(client, itemId, specificData) {
 
   const query = `
     UPDATE tbl_suggestion_achat SET
-      justification                = $2,
-      public_cible                 = $3,
-      recommandation               = $4,
-      usager_nom                   = $5,
-      usager_statut                = $6,
-      usager_faculte               = $7,
-      usager_courriel              = $8,
-      bibliothecaire_disciplinaire = $9,
-      aviser_reservation           = $10,
-      aviser_reception             = $11,
-      date_requise_cours           = $12
+      auteur                       = $2,
+      usager_nom                   = $3,
+      usager_statut                = $4,
+      usager_faculte               = $5,
+      usager_courriel              = $6,
+      bibliothecaire_disciplinaire = $7,
+      aviser_reservation           = $8,
+      aviser_reception             = $9,
+      date_requise_cours           = $10,
+      note_usager                  = $11,
+      techdoc_suggestion_transmise = $12,
+      acq_raison_annulation        = $13,
+      acq_isbn                     = $14,
+      reserve_cours                = $15,
+      reserve_cours_sigle          = $16,
+      bordereau_imprime            = $17,
+      acq_responsable_courriel     = $18
     WHERE item_id = $1
     RETURNING *;
   `;
 
   const values = [
     itemId,
-    d.justification,
-    d.public_cible,
-    d.recommandation,
+    d.auteur,
     d.usager_nom,
     d.usager_statut,
     d.usager_faculte,
@@ -104,11 +142,18 @@ async function updateSuggestionAchat(client, itemId, specificData) {
     d.aviser_reservation,
     d.aviser_reception,
     d.date_requise_cours,
+    d.note_usager,
+    d.techdoc_suggestion_transmise,
+    d.acq_raison_annulation,
+    d.acq_isbn,
+    d.reserve_cours,
+    d.reserve_cours_sigle,
+    d.bordereau_imprime,
+    d.acq_responsable_courriel,
   ];
 
   const result = await client.query(query, values);
 
-  // Si la ligne n'existe pas encore (anciens items), on insère
   if (result.rowCount === 0) {
     return insertSuggestionAchat(client, itemId, specificData);
   }
@@ -117,32 +162,10 @@ async function updateSuggestionAchat(client, itemId, specificData) {
 }
 
 // ──────────────────────────────────────────────────────────────
-// SELECT  —  jointure à ajouter dans votre route GET /items/fiche/:id
+// Colonnes SELECT pour GET /items/fiche/:id
 // ──────────────────────────────────────────────────────────────
-//
-// Ajoutez ces colonnes à votre SELECT existant (LEFT JOIN déjà présent
-// ou à ajouter si absent) :
-//
-//   LEFT JOIN tbl_suggestion_achat sa ON sa.item_id = i.item_id
-//
-// Colonnes à inclure dans le SELECT :
-//   sa.justification,
-//   sa.public_cible,
-//   sa.recommandation,
-//   sa.usager_nom,
-//   sa.usager_statut,
-//   sa.usager_faculte,
-//   sa.usager_courriel,
-//   sa.bibliothecaire_disciplinaire,
-//   sa.aviser_reservation,
-//   sa.aviser_reception,
-//   sa.date_requise_cours
-//
-// Exemple de requête complète (à adapter à votre structure) :
 const GET_FICHE_SUGGESTION_COLUMNS = `
-  sa.justification,
-  sa.public_cible,
-  sa.recommandation,
+  sa.auteur,
   sa.usager_nom,
   sa.usager_statut,
   sa.usager_faculte,
@@ -150,22 +173,16 @@ const GET_FICHE_SUGGESTION_COLUMNS = `
   sa.bibliothecaire_disciplinaire,
   sa.aviser_reservation,
   sa.aviser_reception,
-  sa.date_requise_cours
+  sa.date_requise_cours,
+  sa.note_usager,
+  sa.techdoc_suggestion_transmise,
+  sa.acq_raison_annulation,
+  sa.acq_isbn,
+  sa.reserve_cours,
+  sa.reserve_cours_sigle,
+  sa.bordereau_imprime,
+  sa.acq_responsable_courriel
 `;
-
-// ──────────────────────────────────────────────────────────────
-// INTÉGRATION dans le switch/case de votre contrôleur
-// ──────────────────────────────────────────────────────────────
-//
-// Dans votre fonction handleSpecificData(client, itemId, type, specificData, isUpdate) :
-//
-//   case "Suggestion d'achat":
-//     if (isUpdate) {
-//       await updateSuggestionAchat(client, itemId, specificData);
-//     } else {
-//       await insertSuggestionAchat(client, itemId, specificData);
-//     }
-//     break;
 
 module.exports = {
   insertSuggestionAchat,

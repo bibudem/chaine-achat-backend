@@ -126,7 +126,10 @@ const itemsController = {
       await client.query('BEGIN');
       
       const { specificData, formulaire_type, item_id, date_modification, utilisateur_modification, ...baseData } = req.body;
-      
+
+      // Inclure formulaire_type pour normaliser les anciens noms de type en base
+      if (formulaire_type) baseData.formulaire_type = formulaire_type;
+
       // Filtrer les valeurs vides
       const cleanedBaseData = cleanEmptyFields(baseData);
       
@@ -246,7 +249,7 @@ const itemsController = {
       if (search) {
         params.push(`%${search}%`);
         const i = params.length;
-        conditions.push(`(titre_document ILIKE $${i} OR isbn_issn ILIKE $${i} OR demandeur ILIKE $${i} OR editeur ILIKE $${i})`);
+        conditions.push(`(titre_document ILIKE $${i} OR isbn_issn ILIKE $${i} OR demandeur ILIKE $${i} OR editeur ILIKE $${i} OR CAST(item_id AS TEXT) LIKE $${i})`);
       }
       if (bibliotheque) {
         params.push(bibliotheque);
@@ -565,6 +568,7 @@ async function insertSpecificData(client, itemId, formulaireType, data) {
     case 'Springer':
       tableName = 'tbl_springer';
       break;
+    case "Suggestion d'achat":
     case "Suggestion d'achat - Usager":
       tableName = 'tbl_suggestion_achat';
       break;
@@ -622,6 +626,7 @@ async function updateSpecificData(client, itemId, formulaireType, data) {
     case 'Springer':
       tableName = 'tbl_springer';
       break;
+    case "Suggestion d'achat":
     case "Suggestion d'achat - Usager":
       tableName = 'tbl_suggestion_achat';
       break;
@@ -682,6 +687,7 @@ async function getSpecificData(client, itemId, formulaireType) {
     case 'Springer':
       tableName = 'tbl_springer';
       break;
+    case "Suggestion d'achat":
     case "Suggestion d'achat - Usager":
       tableName = 'tbl_suggestion_achat';
       break;

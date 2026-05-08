@@ -30,21 +30,20 @@ const STATUTS = {
   ACQ_ANNULEE:       ['Demande annulée']
 };
 
-// Whitelist des filtres acceptés par rapportDetaille
-// clé = nom reçu dans req.query, valeur = colonne SQL
+// Whitelist des filtres — clé = nom reçu dans req.query, valeur = colonne SQL (alias i.)
 const ALLOWED_FILTERS = {
-  id:                 COL.id,
-  formulaire_type:    COL.formulaireType,
-  priorite:           COL.priorite,
-  bibliotheque:       COL.bibliotheque,
-  demandeur:          COL.demandeur,
-  typeDocument:       COL.typeDocument,
-  support:            COL.support,
-  fonds:              COL.fonds,
-  editeur:            COL.editeur,
-  annee:              COL.annee,
-  statutBibliotheque: COL.statutBibliotheque,
-  statutAcq:          COL.statutAcq
+  id:                 'i.item_id',
+  formulaire_type:    'i.formulaire_type',
+  priorite:           'i.priorite_demande',
+  bibliotheque:       'i.bibliotheque',
+  demandeur:          'i.demandeur',
+  typeDocument:       'i.categorie_document',
+  support:            'i.format_support',
+  fonds:              'i.fonds_budgetaire',
+  editeur:            'i.editeur',
+  annee:              'i.date_publication',
+  statutBibliotheque: 'i.statut_bibliotheque',
+  statutAcq:          'i.statut_acq'
 };
 
 // ─── Utilitaires ─────────────────────────────────────────
@@ -65,8 +64,8 @@ function buildDateClause(dateDebut, dateFin, params, idxStart = 1) {
       throw new Error('Paramètres de date invalides (dateDebut/dateFin).');
     }
     const clause =
-      `${COL.dateCreation} >= $${idxStart}::timestamptz ` +
-      `AND ${COL.dateCreation} < ($${idxStart + 1}::timestamptz + interval '1 day')`;
+      `i.${COL.dateCreation} >= $${idxStart}::timestamptz ` +
+      `AND i.${COL.dateCreation} < ($${idxStart + 1}::timestamptz + interval '1 day')`;
     params.push(dateDebut, dateFin);
     return { clause, idx: idxStart + 2 };
   }
@@ -82,7 +81,11 @@ async function statistiquesGenerales({ dateDebut, dateFin }) {
   const { clause, idx } = buildDateClause(dateDebut, dateFin, params, 1);
   if (clause) whereParts.push(clause);
 
-  const where = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
+  // For stats, we query tbl_items directly (no JOINs needed)
+  const statsWhere = whereParts.length
+    ? whereParts[0].replace(/i\./g, '')   // strip i. alias for simple query
+    : '';
+  const where = statsWhere ? `WHERE ${statsWhere}` : '';
 
   const query = `
     SELECT
@@ -110,9 +113,8 @@ async function statistiquesGenerales({ dateDebut, dateFin }) {
 }
 
 // ─── Rapport détaillé ────────────────────────────────────
-// Retourne toutes les lignes brutes.
-// Les regroupements (par type, bibliothèque, etc.) sont
-// calculés côté Angular — pas besoin d'autres endpoints.
+// JOIN sur toutes les tables spécifiques pour inclure les champs propres
+// à chaque type de formulaire dans le résultat.
 
 async function rapportDetaille(filters = {}, limit = 100, offset = 0) {
   const params = [];
@@ -152,7 +154,7 @@ async function rapportDetaille(filters = {}, limit = 100, offset = 0) {
       continue;
     }
 
-    // Égalité exacte pour tous les autres champs
+    // Égalité exacte
     conditions.push(`${dbCol} = $${idx}`);
     params.push(value);
     idx += 1;
@@ -161,17 +163,90 @@ async function rapportDetaille(filters = {}, limit = 100, offset = 0) {
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const { limit: l, offset: o } = normalizePagination(limit, offset);
 
+  // Requête principale : JOIN sur toutes les tables spécifiques
   const dataQuery = `
-    SELECT *
-    FROM ${COL.table}
+    SELECT
+      i.*,
+
+      -- Modification et CCOL
+      mc.precision_demande,
+      mc.numero_oclc,
+
+      -- Partagé : date_debut_abonnement (CCOL + Nouvel abonnement)
+      COALESCE(mc.date_debut_abonnement, na.date_debut_abonnement)         AS date_debut_abonnement,
+      -- Partagé : usager_aviser_activation (CCOL + Nouvel achat unique)
+      COALESCE(mc.usager_aviser_activation, nau.usager_aviser_activation)  AS usager_aviser_activation,
+      -- Partagé : usager_aviser_reservation (Nouvel abonnement + Nouvel achat unique)
+      COALESCE(na.usager_aviser_reservation, nau.usager_aviser_reservation) AS usager_aviser_reservation,
+      -- Partagé : type_monographie (Nouvel abonnement + Nouvel achat unique + Requête ACQ)
+      COALESCE(na.type_monographie, nau.type_monographie, racq.type_monographie) AS type_monographie,
+
+      -- Nouvel achat unique
+      nau.id_ressource,
+      nau.projets_speciaux,
+      nau.format_electronique,
+      nau.quantite,
+      nau.reserve_cours_session,
+      nau.reserve_cours_enseignant,
+
+      -- Partagé : reserve_cours (Nouvel achat unique + Suggestion d'achat)
+      COALESCE(nau.reserve_cours, sa.reserve_cours)                        AS reserve_cours,
+      -- Partagé : reserve_cours_sigle
+      COALESCE(nau.reserve_cours_sigle, sa.reserve_cours_sigle)            AS reserve_cours_sigle,
+      -- Partagé : bordereau_imprime
+      COALESCE(nau.bordereau_imprime, sa.bordereau_imprime)                AS bordereau_imprime,
+      -- Partagé : acq_responsable_courriel (PEB + Requête ACQ + Suggestion d'achat)
+      COALESCE(ptn.acq_responsable_courriel, racq.acq_responsable_courriel, sa.acq_responsable_courriel) AS acq_responsable_courriel,
+
+      -- PEB Tipasa numérique
+      ptn.reference_tipasa,
+      ptn.gobi_vu_format_numerique,
+      ptn.gobi_version_moins_365_usd,
+
+      -- Requête ACQ Accessibilité
+      racq.reference_usager,
+      racq.besoin_specifique_format,
+      racq.permalien_sofia,
+      racq.fournisseur_contacte_sans_succes,
+      racq.exemplaire_detenu,
+      racq.verification_caeb,
+      racq.verification_sqla,
+      racq.verification_emma,
+      racq.acq_numerisation_recommandee,
+      racq.acq_date_demande_editeur,
+      racq.acq_date_livraison_estimee,
+
+      -- Suggestion d'achat — Usager
+      sa.auteur,
+      sa.usager_nom,
+      sa.usager_statut,
+      sa.usager_faculte,
+      sa.usager_courriel,
+      sa.bibliothecaire_disciplinaire,
+      sa.aviser_reservation,
+      sa.aviser_reception,
+      sa.date_requise_cours,
+      sa.note_usager,
+      sa.techdoc_suggestion_transmise,
+      sa.acq_raison_annulation,
+      sa.acq_isbn
+
+    FROM tbl_items i
+    LEFT JOIN tbl_modification_ccol       mc   ON mc.item_id   = i.item_id
+    LEFT JOIN tbl_nouvel_abonnement       na   ON na.item_id   = i.item_id
+    LEFT JOIN tbl_nouvel_achat_unique     nau  ON nau.item_id  = i.item_id
+    LEFT JOIN tbl_peb_tipasa_numerique    ptn  ON ptn.item_id  = i.item_id
+    LEFT JOIN tbl_requete_acq             racq ON racq.item_id = i.item_id
+    LEFT JOIN tbl_suggestion_achat        sa   ON sa.item_id   = i.item_id
     ${where}
-    ORDER BY ${COL.dateCreation} DESC
+    ORDER BY i.${COL.dateCreation} DESC
     LIMIT $${idx} OFFSET $${idx + 1}
   `;
 
+  // Compte : requête simple sur tbl_items i (les filtres utilisent i. comme alias)
   const countQuery = `
     SELECT COUNT(*)::int AS total
-    FROM ${COL.table}
+    FROM tbl_items i
     ${where}
   `;
 

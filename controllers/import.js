@@ -5,12 +5,11 @@ console.log('🎯 Chargement du contrôleur import...');
 
 // ==================== MAPPING TYPE → TABLE ====================
 const TYPE_TABLE_MAP = {
-  'Modification et CCOL': 'tbl_modification_ccol',
-  'Nouvel abonnement':    'tbl_nouvel_abonnement',
-  'Nouvel achat unique':  'tbl_nouvel_achat_unique',
-  'PEB Tipasa numérique': 'tbl_peb_tipasa_numerique',
-  'Requête ACQ Accessibilité': 'tbl_requete_acq',
-  'Springer':             'tbl_springer',
+  'Modification et CCOL':       'tbl_modification_ccol',
+  'Nouvel abonnement':          'tbl_nouvel_abonnement',
+  'Nouvel achat unique':        'tbl_nouvel_achat_unique',
+  'PEB Tipasa numérique':       'tbl_peb_tipasa_numerique',
+  'Requête ACQ Accessibilité':  'tbl_requete_acq',
   "Suggestion d'achat - Usager": 'tbl_suggestion_achat',
 };
 
@@ -252,6 +251,10 @@ function buildBaseData(row, formulaireType) {
     bibliotheque:                 row['Bibliothèque']           || null,
     localisation_emplacement:     row['Localisation']           || null,
     demandeur:                    row['Demandeur']              || null,
+    fournisseur:                  row['Fournisseur']            || null,
+    prix_cad:                     row['Prix total (CAD)']       ? parseFloat(row['Prix total (CAD)']) : null,
+    devise_originale:             row['Devise']                 || null,
+    prix_devise_originale:        row['Prix devise originale']  ? parseFloat(row['Prix devise originale']) : null,
     personne_a_aviser_nom:        row['Personne à aviser — Nom']      || row['Personne à aviser'] || null,
     personne_a_aviser_courriel:   row['Personne à aviser — Courriel'] || null,
     source_information:           row["Source d'information"]   || null,
@@ -292,7 +295,9 @@ const COMMON_HEADERS = [
   'Titre', 'Sous-titre', 'ISBN / ISSN', 'Éditeur',
   'Date de publication', 'Catégorie', 'Format / Support',
   'Fonds budgétaire', 'Fonds SN / Projet', 'Bibliothèque',
-  'Localisation', 'Demandeur', 'Personne à aviser',
+  'Localisation', 'Demandeur', 'Fournisseur',
+  'Prix total (CAD)', 'Devise', 'Prix devise originale',
+  'Personne à aviser',
   "Source d'information", 'Note / Commentaire',
   'Création notice DTDM', 'Note DTDM',
   'Statut bibliothèque', 'Statut ACQ', 'Catalogue'
@@ -331,13 +336,15 @@ const IMPORT_CONFIGS = {
     requiredColumns: [...COMMON_REQUIRED, 'Date début abonnement'],
     templateHeaders: [
       'Priorité', ...COMMON_HEADERS, 'Projet spécial',
-      'Date début abonnement', 'Type monographie', 'Collection', 'Catalogage'
+      'Date début abonnement', 'Type monographie', 'Collection', 'Catalogage',
+      'Usager à aviser (réservation)'
     ],
     buildSpecificData: (row) => ({
-      date_debut_abonnement: row['Date début abonnement'] || null,
-      type_monographie:      row['Type monographie']      || null,
-      collection:            row['Collection']            || null,
-      catalogage:            row['Catalogage']            || null,
+      date_debut_abonnement:    row['Date début abonnement']        || null,
+      type_monographie:         row['Type monographie']             || null,
+      collection:               row['Collection']                   || null,
+      catalogage:               row['Catalogage']                   || null,
+      usager_aviser_reservation:row['Usager à aviser (réservation)']|| null,
     })
   },
 
@@ -347,30 +354,32 @@ const IMPORT_CONFIGS = {
     templateHeaders: [
       'Priorité', ...COMMON_HEADERS, 'Projet spécial',
       'Précision demande', 'Numéro OCLC', 'Date début abonnement',
-      'Collection', 'Catalogage'
+      'Collection', 'Catalogage', 'Usager à aviser (activation)'
     ],
     buildSpecificData: (row) => ({
-      precision_demande:     row['Précision demande']      || '',
-      numero_oclc:           row['Numéro OCLC']            || null,
-      date_debut_abonnement: row['Date début abonnement']  || null,
-      collection:            row['Collection']             || null,
-      catalogage:            row['Catalogage']             || null,
+      precision_demande:      row['Précision demande']           || '',
+      numero_oclc:            row['Numéro OCLC']                 || null,
+      date_debut_abonnement:  row['Date début abonnement']       || null,
+      collection:             row['Collection']                  || null,
+      catalogage:             row['Catalogage']                  || null,
+      usager_aviser_activation:row['Usager à aviser (activation)']|| null,
     })
   },
 
   // ── PEB Tipasa numérique ─────────────────────────────────────────
   'PEB Tipasa numérique': {
-    requiredColumns: COMMON_REQUIRED,
+    requiredColumns: [...COMMON_REQUIRED, 'GOBI vu format numérique'],
     templateHeaders: [
       'Priorité', ...COMMON_HEADERS, 'Projet spécial',
       'Type demande PEB', 'Référence Tipasa',
-      'GOBI version < 365 USD', 'ACQ Responsable courriel'
+      'GOBI vu format numérique', 'GOBI version < 365 USD', 'ACQ Responsable courriel'
     ],
     buildSpecificData: (row) => ({
-      type_demande_peb:           row['Type demande PEB']         || null,
-      reference_tipasa:           row['Référence Tipasa']         || null,
-      gobi_version_moins_365_usd: row['GOBI version < 365 USD']  || null,
-      acq_responsable_courriel:   row['ACQ Responsable courriel'] || null,
+      type_demande_peb:           row['Type demande PEB']           || null,
+      reference_tipasa:           row['Référence Tipasa']           || null,
+      gobi_vu_format_numerique:   row['GOBI vu format numérique']   || null,
+      gobi_version_moins_365_usd: row['GOBI version < 365 USD']    || null,
+      acq_responsable_courriel:   row['ACQ Responsable courriel']   || null,
     })
   },
 
@@ -402,28 +411,41 @@ const IMPORT_CONFIGS = {
     })
   },
 
-  // ── Springer ─────────────────────────────────────────────────────
-  'Springer': {
-    requiredColumns: [...COMMON_REQUIRED, 'Quantité'],
-    templateHeaders: [
-      'Priorité', ...COMMON_HEADERS, 'Projet spécial', 'Quantité'
-    ],
-    buildSpecificData: (row) => ({
-      quantite:       parseInt(row['Quantité'], 10) || 1,
-    })
-  },
-
   // ── Suggestion d'achat - Usager ───────────────────────────────────────────
   "Suggestion d'achat - Usager": {
-    requiredColumns: COMMON_REQUIRED,
+    requiredColumns: [
+      ...COMMON_REQUIRED,
+      'Auteur', 'Statut usager', 'Faculté usager',
+      'Courriel usager', 'Bibliothécaire disciplinaire'
+    ],
     templateHeaders: [
-      'Priorité', ...COMMON_HEADERS, 'Projet spécial',
-      'Justification', 'Public cible', 'Recommandation'
+      'Priorité', ...COMMON_HEADERS,
+      'Auteur', 'Nom usager', 'Statut usager', 'Faculté usager',
+      'Courriel usager', 'Bibliothécaire disciplinaire',
+      'ISBN (ACQ)', 'Date requise (cours)',
+      'Réserve de cours', 'Sigle cours',
+      'Bordereau imprimé', 'Aviser réservation', 'Aviser réception',
+      'Note usager', 'Suggestion transmise (TechDoc)',
+      'Responsable ACQ (courriel)', 'Raison annulation (ACQ)'
     ],
     buildSpecificData: (row) => ({
-      justification:  row['Justification']  || null,
-      public_cible:   row['Public cible']   || null,
-      recommandation: parseBool(row['Recommandation']),
+      auteur:                        row['Auteur']                          || null,
+      usager_nom:                    row['Nom usager']                      || null,
+      usager_statut:                 row['Statut usager']                   || null,
+      usager_faculte:                row['Faculté usager']                  || null,
+      usager_courriel:               row['Courriel usager']                 || null,
+      bibliothecaire_disciplinaire:  row['Bibliothécaire disciplinaire']    || null,
+      acq_isbn:                      row['ISBN (ACQ)']                      || null,
+      date_requise_cours:            row['Date requise (cours)']            || null,
+      reserve_cours:                 parseBool(row['Réserve de cours']),
+      reserve_cours_sigle:           row['Sigle cours']                     || null,
+      bordereau_imprime:             row['Bordereau imprimé']               || null,
+      aviser_reservation:            parseBool(row['Aviser réservation']),
+      aviser_reception:              parseBool(row['Aviser réception']),
+      note_usager:                   row['Note usager']                     || null,
+      techdoc_suggestion_transmise:  parseBool(row['Suggestion transmise (TechDoc)']),
+      acq_responsable_courriel:      row['Responsable ACQ (courriel)']      || null,
+      acq_raison_annulation:         row['Raison annulation (ACQ)']         || null,
     })
   },
 };
