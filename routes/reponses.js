@@ -32,7 +32,7 @@ router.post('/peb-tipasa',          ReponsesController.createPebTipasa);
 // ─────────────────────────────────────────────────────────────
 // REQUÊTE ACQ
 // ─────────────────────────────────────────────────────────────
-router.post('/requete-acq',         ReponsesController.createRequeteAcq);
+router.post('/requete-accessibilite', ReponsesController.createRequeteAcq);
 
 // ─────────────────────────────────────────────────────────────
 // SPRINGER
