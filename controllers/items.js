@@ -237,9 +237,10 @@ const itemsController = {
       const search          = (req.query.search          || '').trim();
       const bibliotheque    = (req.query.bibliotheque    || '').trim();
       const statut          = (req.query.statut          || '').trim();
+      const suivi_acq       = (req.query.suivi_acq       || '').trim();
       const formulaire_type = (req.query.formulaire_type || '').trim();
 
-      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','isbn_issn','demandeur','bibliotheque','statut_bibliotheque','date_creation']);
+      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','isbn_issn','demandeur','bibliotheque','statut_bibliotheque','suivi_acq','date_creation']);
       const sortCol = SORT_COLS.has(req.query.sort) ? req.query.sort : 'date_creation';
       const sortDir = req.query.order === 'asc' ? 'ASC' : 'DESC';
 
@@ -258,6 +259,10 @@ const itemsController = {
       if (statut) {
         params.push(statut);
         conditions.push(`(statut_bibliotheque = $${params.length} OR statut_acq = $${params.length})`);
+      }
+      if (suivi_acq) {
+        params.push(suivi_acq);
+        conditions.push(`suivi_acq = $${params.length}`);
       }
       if (formulaire_type) {
         params.push(formulaire_type);
