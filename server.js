@@ -57,7 +57,7 @@ app.use((req, res, next) => {
 // Rate limiting (optionnel)
 if (validationMiddleware?.apiLimiter) {
   app.use('/', validationMiddleware.apiLimiter);
-  console.log('Rate limiting activé');
+  //console.log('Rate limiting activé');
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -87,7 +87,12 @@ app.get('/', (_req, res) => {
    ROUTE DE SANTÉ
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 app.get('/health', async (_req, res) => {
-  const status = { status: 'OK', env: process.env.NODE_ENV || 'development', timestamp: new Date().toISOString() };
+  const status = {
+    status: 'OK',
+    env: process.env.NODE_ENV || 'development',
+    message: 'Gestion des achats',
+    timestamp: new Date().toISOString()
+  };
   try {
     const pool = require('./config/postgres.config');
     await pool.query('SELECT 1');
