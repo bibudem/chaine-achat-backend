@@ -90,7 +90,7 @@ app.get('/health', async (_req, res) => {
   const status = {
     status: 'OK',
     env: process.env.NODE_ENV || 'development',
-    message: 'Gestion des achats',
+    message: 'API Gestion des achats',
     timestamp: new Date().toISOString()
   };
   try {
