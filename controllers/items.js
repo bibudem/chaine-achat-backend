@@ -13,14 +13,13 @@ const itemsController = {
       
       await client.query('BEGIN');
       
-      const { specificData, formulaire_type, ...baseData } = req.body;
-      
-      // CORRECTION : Ajouter formulaire_type à baseData
+      const { specificData, formulaire_type, reponse_id, ...baseData } = req.body;
+
       const fullBaseData = {
         ...baseData,
-        formulaire_type  // <-- Ajouter le formulaire_type
+        formulaire_type
       };
-      
+
       // Supprimer les champs qui ne sont pas dans tbl_items
       delete fullBaseData.date_modification;
       delete fullBaseData.utilisateur_modification;
@@ -52,7 +51,16 @@ const itemsController = {
       if (specificData && Object.keys(specificData).length > 0) {
         await insertSpecificData(client, newItem.item_id, formulaire_type, specificData);
       }
-      
+
+      // 3. Lier l'item à sa réponse source pour éviter les doublons
+      if (reponse_id) {
+        await client.query(
+          'UPDATE tbl_reponses SET item_id_cree = $1 WHERE id = $2',
+          [newItem.item_id, reponse_id]
+        );
+        console.log(`🔗 tbl_reponses #${reponse_id} → item_id_cree = ${newItem.item_id}`);
+      }
+
       await client.query('COMMIT');
       
       res.status(201).json({
