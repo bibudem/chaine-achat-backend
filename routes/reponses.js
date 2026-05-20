@@ -54,6 +54,7 @@ router.put('/:id/decision',         ReponsesController.decisionApi);
 // ─────────────────────────────────────────────────────────────
 // LECTURE (commun)
 // ─────────────────────────────────────────────────────────────
+router.get('/pending',              ReponsesController.getPending);
 router.get('/',                     ReponsesController.getAll);
 router.get('/:id',                  ReponsesController.getById);
 

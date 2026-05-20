@@ -357,6 +357,19 @@ const ReponsesController = {
 
   // LECTURE (commun)
   // ═══════════════════════════════════════════════════════════
+
+  // GET /reponses/pending — réponses sans décision ACQ (item_id_cree IS NULL)
+  async getPending(req, res) {
+    const limit = Math.min(parseInt(req.query.limit) || 5, 20);
+    try {
+      const result = await ReponsesModel.getPending(limit);
+      res.json(result);
+    } catch (err) {
+      console.error('[pending] getPending:', err);
+      res.status(500).json({ error: 'Erreur lors de la récupération des réponses en attente.' });
+    }
+  },
+
   async getAll(req, res) {
     const { type, statut, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;

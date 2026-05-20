@@ -352,6 +352,21 @@ const ReponsesModel = {
     };
   },
 
+  async getPending(limit = 5) {
+    const [{ rows: reponses }, { rows: countRows }] = await Promise.all([
+      pool.query(
+        `SELECT id, type_formulaire, usager_nom, "dateA"
+           FROM tbl_reponses
+          WHERE item_id_cree IS NULL
+          ORDER BY "dateA" DESC
+          LIMIT $1`,
+        [limit]
+      ),
+      pool.query(`SELECT COUNT(*)::int AS total FROM tbl_reponses WHERE item_id_cree IS NULL`)
+    ]);
+    return { count: countRows[0].total, reponses };
+  },
+
   async findById(id) {
     const { rows } = await pool.query(
       `SELECT * FROM tbl_reponses WHERE id = $1`,
