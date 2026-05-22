@@ -30,7 +30,7 @@ requiredMethods.forEach(method => {
 // ==================== MULTER — stockage mémoire ====================
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 10 * 1024 * 1024 }, // 10 Mo max
+  limits:  { fileSize: 25 * 1024 * 1024 }, // 25 Mo max
   fileFilter: (_req, file, cb) => {
     const allowed = [
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

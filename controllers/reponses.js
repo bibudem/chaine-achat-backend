@@ -354,6 +354,23 @@ const ReponsesController = {
   },
 
   // ═══════════════════════════════════════════════════════════
+  // CRÉER L'ITEM DEPUIS UNE RÉPONSE
+  // POST /reponses/:id/creer-item
+  // Idempotent — retourne l'item_id existant si déjà créé.
+  // ═══════════════════════════════════════════════════════════
+  async creerItem(req, res) {
+    const reponseId = parseInt(req.params.id, 10);
+    if (!reponseId) return res.status(400).json({ success: false, error: 'id invalide.' });
+    try {
+      const itemId = await ReponsesModel.creerItemDepuisReponse(reponseId);
+      res.json({ success: true, item_id: itemId, reponse_id: reponseId });
+    } catch (err) {
+      console.error('[creerItem]', err.message);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════
 
   // LECTURE (commun)
   // ═══════════════════════════════════════════════════════════
@@ -386,9 +403,13 @@ const ReponsesController = {
     try {
       const row = await ReponsesModel.findById(req.params.id);
       if (!row) return res.status(404).json({ error: 'Réponse non trouvée.' });
+      // Normaliser reponses : toujours envoyer un objet au frontend (la colonne peut être TEXT)
+      if (typeof row.reponses === 'string') {
+        try { row.reponses = JSON.parse(row.reponses); } catch (e) { row.reponses = {}; }
+      }
       res.json(row);
     } catch (err) {
-      res.status(500).json({ error: 'Erreur lors de la récupération.' + req.params });
+      res.status(500).json({ error: 'Erreur lors de la récupération.' });
     }
   }
 };

@@ -28,6 +28,7 @@ const rapportsRoutes        = loadModule('./routes/rapports',        'Routes rap
 const reponsesRoutes        = loadModule('./routes/reponses',        'Routes réponses');
 const homeRoutes            = loadModule('./routes/home',            'Routes home');
 const importRoutes          = loadModule('./routes/imports',         'Routes import');
+const importLogsRoutes      = loadModule('./routes/import-logs',     'Routes import-logs');
 const configRoutes          = loadModule('./routes/config',          'Routes config');
 const validationMiddleware  = loadModule('./middleware/validation.middleware', 'Middleware validation');
 
@@ -66,7 +67,8 @@ if (validationMiddleware?.apiLimiter) {
 app.use('/items',           itemsRoutes);
 app.use('/rapports',        rapportsRoutes);
 app.use('/reponses',        reponsesRoutes);
-app.use('/import', importRoutes);
+app.use('/import',       importRoutes);
+app.use('/import-logs',  importLogsRoutes);
 app.use('/home',   homeRoutes);
 app.use('/config', configRoutes);
 

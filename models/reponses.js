@@ -1,5 +1,49 @@
 const pool = require('../config/postgres.config');
 
+// ── Helpers internes ──────────────────────────────────────────────────────────
+
+function cleanEmptyFields(obj) {
+  return Object.fromEntries(
+    Object.entries(obj)
+      .filter(([, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v])
+  );
+}
+
+const TYPE_TABLE_MAP = {
+  'Modification et CCOL':        'tbl_modification_ccol',
+  'Nouvel abonnement':           'tbl_nouvel_abonnement',
+  'Nouvel achat unique':         'tbl_nouvel_achat_unique',
+  'PEB Tipasa numérique':        'tbl_peb_tipasa_numerique',
+  'Requête ACQ Accessibilité':   'tbl_requete_acq',
+  "Suggestion d'achat - Usager": 'tbl_suggestion_achat',
+};
+
+async function insertSpecificTable(client, itemId, formulaireType, data) {
+  const tableName = TYPE_TABLE_MAP[formulaireType];
+  if (!tableName) return;
+  const clean = cleanEmptyFields(data);
+  if (!Object.keys(clean).length) return;
+  const cols = ['item_id', ...Object.keys(clean)];
+  const vals = [itemId, ...Object.values(clean)];
+  const phs  = vals.map((_, i) => `$${i + 1}`).join(', ');
+  const upd  = Object.keys(clean).map(k => `${k} = EXCLUDED.${k}`).join(', ');
+  await client.query(
+    `INSERT INTO ${tableName} (${cols.join(', ')}) VALUES (${phs})
+     ON CONFLICT (item_id) DO UPDATE SET ${upd}`,
+    vals
+  );
+}
+
+// Clés propres aux tables spécifiques de Suggestion (format plat)
+const SUGGESTION_SPEC_KEYS = [
+  'auteur', 'usager_faculte', 'bibliothecaire_disciplinaire',
+  'aviser_reservation', 'aviser_reception', 'date_requise_cours',
+  'note_usager', 'reserve_cours', 'reserve_cours_sigle', 'bordereau_imprime',
+  'acq_raison_annulation', 'techdoc_suggestion_transmise', 'acq_isbn',
+  'acq_responsable_courriel',
+];
+
 const ReponsesModel = {
 
   // ═══════════════════════════════════════════════════════════
@@ -352,17 +396,109 @@ const ReponsesModel = {
     };
   },
 
+  // ── Créer l'item dans tbl_items depuis une réponse ───────────────────────────
+  // Idempotent : si item_id_cree est déjà set, retourne l'id existant.
+  async creerItemDepuisReponse(reponseId) {
+    const reponse = await this.findById(reponseId);
+    if (!reponse) throw new Error(`Réponse #${reponseId} introuvable`);
+    if (reponse.item_id_cree) return reponse.item_id_cree;
+
+    const raw  = reponse.reponses;
+    const data = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+
+    let baseData, specificData;
+    if (data.baseData) {
+      // Format structuré : tous les types sauf l'ancienne Suggestion
+      baseData     = data.baseData;
+      specificData = data.specificData || {};
+    } else {
+      // Format plat : Suggestion d'achat - Usager (ancien formulaire)
+      specificData = {
+        usager_statut:   reponse.usager_statut,
+        usager_courriel: reponse.usager_courriel,
+      };
+      baseData = {};
+      for (const [k, v] of Object.entries(data)) {
+        if (SUGGESTION_SPEC_KEYS.includes(k)) specificData[k] = v;
+        else baseData[k] = v;
+      }
+    }
+
+    const cleanBase = cleanEmptyFields({
+      formulaire_type: reponse.type_formulaire,
+      demandeur:       baseData.demandeur || reponse.usager_nom,
+      ...baseData,
+    });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const cols = Object.keys(cleanBase);
+      const vals = Object.values(cleanBase);
+      const phs  = vals.map((_, i) => `$${i + 1}`).join(', ');
+
+      const { rows } = await client.query(
+        `INSERT INTO tbl_items (${cols.join(', ')}) VALUES (${phs}) RETURNING item_id`,
+        vals
+      );
+      const itemId = rows[0].item_id;
+
+      await insertSpecificTable(client, itemId, reponse.type_formulaire, specificData);
+
+      await client.query(
+        'UPDATE tbl_reponses SET item_id_cree = $1 WHERE id = $2',
+        [itemId, reponseId]
+      );
+
+      await client.query('COMMIT');
+      return itemId;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  // ── Réponses/items en attente de décision ACQ ─────────────────────────────
+  // Part 1 : réponses sans item créé (jamais ouvertes)
+  // Part 2 : items sans suivi_acq (import OU réponses ouvertes non décidées)
   async getPending(limit = 5) {
     const [{ rows: reponses }, { rows: countRows }] = await Promise.all([
       pool.query(
-        `SELECT id, type_formulaire, usager_nom, "dateA"
+        `SELECT id,
+                type_formulaire,
+                usager_nom,
+                "dateA",
+                'reponse'    AS source,
+                NULL::int    AS item_id
            FROM tbl_reponses
           WHERE item_id_cree IS NULL
+
+         UNION ALL
+
+         SELECT COALESCE(r.id, i.item_id)                                     AS id,
+                i.formulaire_type                                              AS type_formulaire,
+                COALESCE(r.usager_nom, i.demandeur)                           AS usager_nom,
+                i.date_creation                                                AS "dateA",
+                CASE WHEN r.id IS NULL THEN 'import' ELSE 'reponse-created' END AS source,
+                i.item_id                                                      AS item_id
+           FROM tbl_items i
+           LEFT JOIN tbl_reponses r ON r.item_id_cree = i.item_id
+          WHERE (i.suivi_acq IS NULL OR i.suivi_acq = '')
+
           ORDER BY "dateA" DESC
           LIMIT $1`,
         [limit]
       ),
-      pool.query(`SELECT COUNT(*)::int AS total FROM tbl_reponses WHERE item_id_cree IS NULL`)
+      pool.query(
+        `SELECT COUNT(*)::int AS total FROM (
+           SELECT id FROM tbl_reponses WHERE item_id_cree IS NULL
+           UNION ALL
+           SELECT item_id FROM tbl_items WHERE (suivi_acq IS NULL OR suivi_acq = '')
+         ) sub`
+      )
     ]);
     return { count: countRows[0].total, reponses };
   },

@@ -46,6 +46,12 @@ router.post('/springer',            ReponsesController.createSpringer);
 router.get('/decision',             ReponsesController.decisionFormulaire);
 
 // ─────────────────────────────────────────────────────────────
+// CRÉER L'ITEM DEPUIS UNE RÉPONSE (idempotent)
+// POST /reponses/:id/creer-item
+// ─────────────────────────────────────────────────────────────
+router.post('/:id/creer-item',      ReponsesController.creerItem);
+
+// ─────────────────────────────────────────────────────────────
 // DÉCISION API JSON (pour n8n)
 // PUT /reponses/:id/decision
 // ─────────────────────────────────────────────────────────────
