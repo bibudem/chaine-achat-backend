@@ -430,6 +430,11 @@ const ReponsesModel = {
       ...baseData,
     });
 
+    // Ces champs appartiennent à tbl_reponses ou tbl_suggestion_achat, pas à tbl_items
+    for (const k of ['usager_nom', 'usager_statut', 'usager_courriel']) {
+      delete cleanBase[k];
+    }
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
