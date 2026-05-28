@@ -423,13 +423,14 @@ const IMPORT_CONFIGS = {
     ],
     templateHeaders: [
       'priorite_demande', ...COMMON_HEADERS,
-      'id_ressource', 'projet_special', 'format_pret_numerique',
+      'id_ressource', 'projets_speciaux', 'format_pret_numerique',
       'type_monographie', 'format_electronique',
       'reserve_cours', 'reserve_cours_sigle', 'reserve_cours_session', 'reserve_cours_enseignant',
-      'bordereau_imprime', 'categorie_depense', 'note_catalogueur_droit'
+      'bordereau_imprime', 'quantite'
     ],
     buildSpecificData: (row) => ({
       id_ressource:             row['id_ressource']             || null,
+      projets_speciaux:         row['projets_speciaux']         || null,
       type_monographie:         row['type_monographie']         || null,
       format_electronique:      row['format_electronique']      || null,
       reserve_cours:            parseBool(row['reserve_cours']),
@@ -437,8 +438,7 @@ const IMPORT_CONFIGS = {
       reserve_cours_session:    row['reserve_cours_session']    || null,
       reserve_cours_enseignant: row['reserve_cours_enseignant'] || null,
       bordereau_imprime:        row['bordereau_imprime']        || null,
-      categorie_depense:        row['categorie_depense']        || null,
-      note_catalogueur_droit:   row['note_catalogueur_droit']   || null,
+      quantite:                 row['quantite'] ? parseInt(row['quantite'], 10) : null,
     })
   },
 
