@@ -164,16 +164,20 @@ async function importExcel(req, res) {
                  : inserted     === 0   ? 'échec'
                  : 'partiel';
 
-    ImportLogsModel.create({
-      formulaire_type: formulaireType,
-      fichier_nom:     req.file.originalname,
-      nb_total:        rows.length,
-      nb_inseres:      inserted,
-      nb_erreurs:      errors.length,
-      details_erreurs: errors,
-      utilisateur:     req.body?.utilisateur || 'Inconnu',
-      statut
-    }).catch(e => console.warn('[import-log] impossible de sauvegarder le log:', e.message));
+    try {
+      await ImportLogsModel.create({
+        formulaire_type: formulaireType,
+        fichier_nom:     req.file.originalname,
+        nb_total:        rows.length,
+        nb_inseres:      inserted,
+        nb_erreurs:      errors.length,
+        details_erreurs: errors,
+        utilisateur:     req.body?.utilisateur || 'Inconnu',
+        statut
+      });
+    } catch (logErr) {
+      console.error('[import-log] impossible de sauvegarder le log:', logErr.message);
+    }
 
     res.status(201).json({
       success:  true,
@@ -187,16 +191,20 @@ async function importExcel(req, res) {
     await client.query('ROLLBACK');
     console.error('❌ Erreur import Excel:', error);
 
-    ImportLogsModel.create({
-      formulaire_type: req.params?.type ? decodeURIComponent(req.params.type) : 'Inconnu',
-      fichier_nom:     req.file?.originalname || 'inconnu',
-      nb_total:        0,
-      nb_inseres:      0,
-      nb_erreurs:      1,
-      details_erreurs: [{ ligne: 0, erreur: error.message }],
-      utilisateur:     req.body?.utilisateur || 'Inconnu',
-      statut:          'échec'
-    }).catch(e => console.warn('[import-log] impossible de sauvegarder le log d\'erreur:', e.message));
+    try {
+      await ImportLogsModel.create({
+        formulaire_type: req.params?.type ? decodeURIComponent(req.params.type) : 'Inconnu',
+        fichier_nom:     req.file?.originalname || 'inconnu',
+        nb_total:        0,
+        nb_inseres:      0,
+        nb_erreurs:      1,
+        details_erreurs: [{ ligne: 0, erreur: error.message }],
+        utilisateur:     req.body?.utilisateur || 'Inconnu',
+        statut:          'échec'
+      });
+    } catch (logErr) {
+      console.error('[import-log] impossible de sauvegarder le log d\'erreur:', logErr.message);
+    }
 
     res.status(500).json({ success: false, error: error.message });
   } finally {
