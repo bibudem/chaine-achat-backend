@@ -376,6 +376,18 @@ const ReponsesController = {
   // ═══════════════════════════════════════════════════════════
 
   // GET /reponses/pending — réponses sans décision ACQ (item_id_cree IS NULL)
+  async getByEmail(req, res) {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ error: 'Paramètre email requis.' });
+    try {
+      const rows = await ReponsesModel.findByEmail(email);
+      res.json({ data: rows });
+    } catch (err) {
+      console.error('[profil] getByEmail:', err);
+      res.status(500).json({ error: 'Erreur lors de la récupération des demandes.' });
+    }
+  },
+
   async getPending(req, res) {
     const limit = Math.min(parseInt(req.query.limit) || 5, 20);
     try {
