@@ -480,6 +480,7 @@ const ReponsesModel = {
                 NULL::int    AS item_id
            FROM tbl_reponses
           WHERE item_id_cree IS NULL
+            AND (statut_approbation IS NULL OR statut_approbation != 'item_supprime')
 
          UNION ALL
 
@@ -500,6 +501,7 @@ const ReponsesModel = {
       pool.query(
         `SELECT COUNT(*)::int AS total FROM (
            SELECT id FROM tbl_reponses WHERE item_id_cree IS NULL
+             AND (statut_approbation IS NULL OR statut_approbation != 'item_supprime')
            UNION ALL
            SELECT item_id FROM tbl_items WHERE (suivi_acq IS NULL OR suivi_acq = '')
          ) sub`

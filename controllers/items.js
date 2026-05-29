@@ -204,16 +204,22 @@ const itemsController = {
       const itemId = req.params.id;
       console.log('➡️ DELETE /api/items/delete/' + itemId);
       
+      // Marquer la réponse source comme item supprimé (avant que le FK SET NULL s'exécute)
+      await client.query(
+        `UPDATE tbl_reponses SET statut_approbation = 'item_supprime' WHERE item_id_cree = $1`,
+        [itemId]
+      );
+
       const query = 'DELETE FROM tbl_items WHERE item_id = $1 RETURNING *';
       const result = await client.query(query, [itemId]);
-      
+
       if (result.rows.length === 0) {
         return res.status(404).json({
           success: false,
           error: 'Item non trouvé pour la suppression'
         });
       }
-      
+
       console.log(`✅ Item ${itemId} supprimé (CASCADE vers tables spécifiques)`);
       res.json({
         success: true,
