@@ -518,39 +518,59 @@ const ReponsesModel = {
     return rows[0] || null;
   },
 
+  async deleteById(id) {
+    const { rowCount } = await pool.query(
+      `DELETE FROM tbl_reponses
+        WHERE id = $1
+          AND (statut_approbation IS NULL OR statut_approbation NOT IN ('approuve', 'refuse'))
+          AND NOT EXISTS (
+            SELECT 1 FROM tbl_items
+             WHERE tbl_items.item_id = tbl_reponses.item_id_cree
+               AND tbl_items.suivi_acq IS NOT NULL
+               AND tbl_items.suivi_acq <> ''
+          )`,
+      [id]
+    );
+    return rowCount > 0;
+  },
+
   async findByEmail(email) {
     const { rows } = await pool.query(
-      `SELECT r.id,
-              r.type_formulaire,
-              r."dateA",
-              r.statut_approbation,
-              r.commentaire_admin,
-              r.date_traitement,
-              r.usager_statut,
-              COALESCE(i.titre_document,
-                       r.reponses->>'titre_document',
-                       r.reponses->'baseData'->>'titre_document')   AS titre_document,
-              COALESCE(i.isbn_issn,
-                       r.reponses->>'isbn_issn',
-                       r.reponses->'baseData'->>'isbn_issn')         AS isbn_issn,
-              COALESCE(i.editeur,
-                       r.reponses->>'editeur',
-                       r.reponses->'baseData'->>'editeur')           AS editeur,
-              COALESCE(i.bibliotheque,
-                       r.reponses->>'bibliotheque',
-                       r.reponses->'baseData'->>'bibliotheque')      AS bibliotheque,
-              COALESCE(i.prix_cad::text,
-                       r.reponses->>'prix_cad',
-                       r.reponses->'baseData'->>'prix_cad')          AS prix_cad,
-              COALESCE(i.devise_originale,
-                       r.reponses->>'devise_originale',
-                       r.reponses->'baseData'->>'devise_originale')  AS devise_originale,
-              i.suivi_acq,
-              i.note_acq
-         FROM tbl_reponses r
-         LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
-        WHERE r.usager_courriel = $1
-        ORDER BY r."dateA" DESC`,
+      `SELECT * FROM (
+         SELECT DISTINCT ON (r.id)
+                r.id,
+                r.type_formulaire,
+                r."dateA",
+                r.statut_approbation,
+                r.commentaire_admin,
+                r.date_traitement,
+                r.usager_statut,
+                COALESCE(i.titre_document,
+                         r.reponses->>'titre_document',
+                         r.reponses->'baseData'->>'titre_document')   AS titre_document,
+                COALESCE(i.isbn_issn,
+                         r.reponses->>'isbn_issn',
+                         r.reponses->'baseData'->>'isbn_issn')         AS isbn_issn,
+                COALESCE(i.editeur,
+                         r.reponses->>'editeur',
+                         r.reponses->'baseData'->>'editeur')           AS editeur,
+                COALESCE(i.bibliotheque,
+                         r.reponses->>'bibliotheque',
+                         r.reponses->'baseData'->>'bibliotheque')      AS bibliotheque,
+                COALESCE(i.prix_cad::text,
+                         r.reponses->>'prix_cad',
+                         r.reponses->'baseData'->>'prix_cad')          AS prix_cad,
+                COALESCE(i.devise_originale,
+                         r.reponses->>'devise_originale',
+                         r.reponses->'baseData'->>'devise_originale')  AS devise_originale,
+                i.suivi_acq,
+                i.note_acq
+           FROM tbl_reponses r
+           LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
+          WHERE r.usager_courriel = $1
+          ORDER BY r.id
+       ) sub
+       ORDER BY "dateA" DESC`,
       [email]
     );
     return rows;

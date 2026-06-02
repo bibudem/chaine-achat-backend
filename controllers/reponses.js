@@ -411,6 +411,24 @@ const ReponsesController = {
     }
   },
 
+  // ═══════════════════════════════════════════════════════════
+  // SUPPRESSION PAR L'USAGER
+  // DELETE /reponses/:id
+  // Autorisé uniquement si aucun avis ACQ n'est encore pris.
+  // ═══════════════════════════════════════════════════════════
+  async supprimer(req, res) {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'id invalide.' });
+    try {
+      const deleted = await ReponsesModel.deleteById(id);
+      if (!deleted) return res.status(404).json({ error: 'Demande introuvable ou déjà traitée.' });
+      return res.status(204).send();
+    } catch (err) {
+      console.error('[supprimer]', err);
+      return res.status(500).json({ error: 'Erreur lors de la suppression.' });
+    }
+  },
+
   async getById(req, res) {
     try {
       const row = await ReponsesModel.findById(req.params.id);
