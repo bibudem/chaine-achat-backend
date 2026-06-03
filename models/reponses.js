@@ -466,9 +466,9 @@ const ReponsesModel = {
     }
   },
 
-  // ── Réponses/items en attente de décision ACQ ─────────────────────────────
+  // ── Items en attente de statut bibliothèque ───────────────────────────────
   // Part 1 : réponses sans item créé (jamais ouvertes)
-  // Part 2 : items sans suivi_acq (import OU réponses ouvertes non décidées)
+  // Part 2 : items dont statut_bibliotheque est vide ou "Saisie en cours - En attente"
   async getPending(limit = 5) {
     const [{ rows: reponses }, { rows: countRows }] = await Promise.all([
       pool.query(
@@ -492,7 +492,9 @@ const ReponsesModel = {
                 i.item_id                                                      AS item_id
            FROM tbl_items i
            LEFT JOIN tbl_reponses r ON r.item_id_cree = i.item_id
-          WHERE (i.suivi_acq IS NULL OR i.suivi_acq = '')
+          WHERE (i.statut_bibliotheque IS NULL
+             OR i.statut_bibliotheque = ''
+             OR i.statut_bibliotheque = 'Saisie en cours - En attente')
 
           ORDER BY "dateA" DESC
           LIMIT $1`,
@@ -503,7 +505,10 @@ const ReponsesModel = {
            SELECT id FROM tbl_reponses WHERE item_id_cree IS NULL
              AND (statut_approbation IS NULL OR statut_approbation != 'item_supprime')
            UNION ALL
-           SELECT item_id FROM tbl_items WHERE (suivi_acq IS NULL OR suivi_acq = '')
+           SELECT item_id FROM tbl_items
+            WHERE (statut_bibliotheque IS NULL
+               OR statut_bibliotheque = ''
+               OR statut_bibliotheque = 'Saisie en cours - En attente')
          ) sub`
       )
     ]);
@@ -526,8 +531,9 @@ const ReponsesModel = {
           AND NOT EXISTS (
             SELECT 1 FROM tbl_items
              WHERE tbl_items.item_id = tbl_reponses.item_id_cree
-               AND tbl_items.suivi_acq IS NOT NULL
-               AND tbl_items.suivi_acq <> ''
+               AND tbl_items.statut_bibliotheque IS NOT NULL
+               AND tbl_items.statut_bibliotheque <> ''
+               AND tbl_items.statut_bibliotheque <> 'Saisie en cours - En attente'
           )`,
       [id]
     );
