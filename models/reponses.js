@@ -569,8 +569,8 @@ const ReponsesModel = {
                 COALESCE(i.devise_originale,
                          r.reponses->>'devise_originale',
                          r.reponses->'baseData'->>'devise_originale')  AS devise_originale,
-                i.suivi_acq,
-                i.note_acq
+                i.statut_bibliotheque,
+                i.note_commentaire
            FROM tbl_reponses r
            LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
           WHERE r.usager_courriel = $1
