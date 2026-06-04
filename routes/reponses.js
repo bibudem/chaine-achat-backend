@@ -35,11 +35,6 @@ router.post('/peb-tipasa',          ReponsesController.createPebTipasa);
 router.post('/requete-accessibilite', ReponsesController.createRequeteAcq);
 
 // ─────────────────────────────────────────────────────────────
-// SPRINGER
-// ─────────────────────────────────────────────────────────────
-router.post('/springer',            ReponsesController.createSpringer);
-
-// ─────────────────────────────────────────────────────────────
 // DÉCISION GÉNÉRIQUE (nouveaux types)
 // GET /reponses/decision?id=&action=approuver|refuser&courriel_admin=
 // ─────────────────────────────────────────────────────────────
