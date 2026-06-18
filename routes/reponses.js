@@ -59,6 +59,7 @@ router.get('/pending',              ReponsesController.getPending);
 router.get('/profil',               ReponsesController.getByEmail);
 router.get('/',                     ReponsesController.getAll);
 router.get('/:id',                  ReponsesController.getById);
+router.patch('/:id',                ReponsesController.patchReponses);
 router.delete('/:id',               ReponsesController.supprimer);
 
 module.exports = router;

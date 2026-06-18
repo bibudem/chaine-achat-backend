@@ -360,31 +360,38 @@ const ReponsesModel = {
     return rows[0] || null;
   },
 
-  async findAll({ type = null, statut = null, limit = 20, offset = 0 }) {
+  async findAll({ type = null, statut = null, suivi_acq = null, limit = 20, offset = 0 }) {
     const params     = [];
     const conditions = [];
 
     if (type) {
       params.push(type);
-      conditions.push(`type_formulaire = $${params.length}`);
+      conditions.push(`r.type_formulaire = $${params.length}`);
     }
     if (statut) {
       params.push(statut);
-      conditions.push(`statut_approbation = $${params.length}`);
+      conditions.push(`r.statut_approbation = $${params.length}`);
+    }
+    if (suivi_acq) {
+      params.push(suivi_acq);
+      conditions.push(`i.suivi_acq = $${params.length}`);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     params.push(limit, offset);
 
     const { rows } = await pool.query(
-      `SELECT id, type_formulaire, usager_nom, usager_courriel,
-              usager_statut, reponses, "dateA",
-              statut_approbation, courriel_admin,
-              date_traitement, commentaire_admin,
+      `SELECT r.id, r.type_formulaire, r.usager_nom, r.usager_courriel,
+              r.usager_statut, r.reponses, r."dateA",
+              r.statut_approbation, r.courriel_admin,
+              r.date_traitement, r.commentaire_admin,
+              r.item_id_cree,
+              i.suivi_acq,
               COUNT(*) OVER() AS total_count
-       FROM tbl_reponses
+       FROM tbl_reponses r
+       LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
        ${where}
-       ORDER BY "dateA" DESC
+       ORDER BY r."dateA" DESC
        LIMIT $${params.length - 1}
        OFFSET $${params.length}`,
       params
@@ -469,7 +476,40 @@ const ReponsesModel = {
   // ── Items en attente de statut bibliothèque ───────────────────────────────
   // Part 1 : réponses sans item créé (jamais ouvertes)
   // Part 2 : items dont statut_bibliotheque est vide ou "Saisie en cours - En attente"
-  async getPending(limit = 5) {
+  // Avec statut_field/statut_value : filtre sur un champ précis de tbl_items (ex. suivi_acq)
+  async getPending(limit = 5, statut_field = null, statut_value = null) {
+    const ALLOWED_FIELDS = ['suivi_acq', 'statut_bibliotheque', 'statut_acq'];
+
+    if (statut_field && statut_value) {
+      if (!ALLOWED_FIELDS.includes(statut_field)) {
+        throw new Error(`Champ de statut non autorisé : ${statut_field}`);
+      }
+      const col = statut_field; // validé par whitelist
+      const [{ rows: reponses }, { rows: countRows }] = await Promise.all([
+        pool.query(
+          `SELECT COALESCE(r.id, i.item_id)                                       AS id,
+                  i.formulaire_type                                                AS type_formulaire,
+                  COALESCE(r.usager_nom, i.demandeur)                             AS usager_nom,
+                  i.date_creation                                                  AS "dateA",
+                  CASE WHEN r.id IS NULL THEN 'import' ELSE 'reponse-created' END AS source,
+                  i.item_id                                                        AS item_id
+             FROM tbl_items i
+             LEFT JOIN tbl_reponses r ON r.item_id_cree = i.item_id
+            WHERE i.${col} = $2
+            ORDER BY "dateA" DESC
+            LIMIT $1`,
+          [limit, statut_value]
+        ),
+        pool.query(
+          `SELECT COUNT(*)::int AS total
+             FROM tbl_items
+            WHERE ${col} = $1`,
+          [statut_value]
+        )
+      ]);
+      return { count: countRows[0].total, reponses };
+    }
+
     const [{ rows: reponses }, { rows: countRows }] = await Promise.all([
       pool.query(
         `SELECT id,
@@ -523,6 +563,21 @@ const ReponsesModel = {
     return rows[0] || null;
   },
 
+  async updateReponses(id, reponses) {
+    const { rowCount } = await pool.query(
+      `UPDATE tbl_reponses
+          SET reponses = $2
+        WHERE id = $1
+          AND NOT EXISTS (
+            SELECT 1 FROM tbl_items
+             WHERE tbl_items.item_id = tbl_reponses.item_id_cree
+               AND tbl_items.statut_bibliotheque = 'Soumettre aux ACQ'
+          )`,
+      [id, JSON.stringify(reponses)]
+    );
+    return rowCount > 0;
+  },
+
   async deleteById(id) {
     const { rowCount } = await pool.query(
       `DELETE FROM tbl_reponses
@@ -531,9 +586,7 @@ const ReponsesModel = {
           AND NOT EXISTS (
             SELECT 1 FROM tbl_items
              WHERE tbl_items.item_id = tbl_reponses.item_id_cree
-               AND tbl_items.statut_bibliotheque IS NOT NULL
-               AND tbl_items.statut_bibliotheque <> ''
-               AND tbl_items.statut_bibliotheque <> 'Saisie en cours - En attente'
+               AND tbl_items.statut_bibliotheque = 'Soumettre aux ACQ'
           )`,
       [id]
     );
@@ -569,7 +622,10 @@ const ReponsesModel = {
                 COALESCE(i.devise_originale,
                          r.reponses->>'devise_originale',
                          r.reponses->'baseData'->>'devise_originale')  AS devise_originale,
-                i.statut_bibliotheque,
+                COALESCE(i.statut_bibliotheque,
+                         r.reponses->>'statut_bibliotheque',
+                         r.reponses->'baseData'->>'statut_bibliotheque') AS statut_bibliotheque,
+                i.suivi_acq,
                 i.note_commentaire
            FROM tbl_reponses r
            LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree

@@ -389,9 +389,11 @@ const ReponsesController = {
   },
 
   async getPending(req, res) {
-    const limit = Math.min(parseInt(req.query.limit) || 5, 20);
+    const limit        = Math.min(parseInt(req.query.limit) || 5, 20);
+    const statut_field = req.query.statut_field || null;
+    const statut_value = req.query.statut_value || null;
     try {
-      const result = await ReponsesModel.getPending(limit);
+      const result = await ReponsesModel.getPending(limit, statut_field, statut_value);
       res.json(result);
     } catch (err) {
       console.error('[pending] getPending:', err);
@@ -400,10 +402,10 @@ const ReponsesController = {
   },
 
   async getAll(req, res) {
-    const { type, statut, page = 1, limit = 20 } = req.query;
+    const { type, statut, suivi_acq, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
     try {
-      const { rows, total } = await ReponsesModel.findAll({ type, statut, limit, offset });
+      const { rows, total } = await ReponsesModel.findAll({ type, statut, suivi_acq, limit, offset });
       res.json({ data: rows, total, page: parseInt(page), limit: parseInt(limit) });
     } catch (err) {
       console.error('[commun] getAll:', err);
@@ -440,6 +442,20 @@ const ReponsesController = {
       res.json(row);
     } catch (err) {
       res.status(500).json({ error: 'Erreur lors de la récupération.' });
+    }
+  },
+
+  async patchReponses(req, res) {
+    const { id } = req.params;
+    const { reponses } = req.body;
+    if (!reponses) return res.status(400).json({ error: 'Corps requis : { reponses }' });
+    try {
+      const updated = await ReponsesModel.updateReponses(id, reponses);
+      if (!updated) return res.status(403).json({ error: 'Modification non autorisée ou demande introuvable.' });
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[patchReponses]', err);
+      res.status(500).json({ error: 'Erreur lors de la mise à jour.' });
     }
   }
 };

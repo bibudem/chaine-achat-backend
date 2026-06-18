@@ -23,6 +23,7 @@ function loadModule(path, label, { required = true } = {}) {
   }
 }
 
+const authRoutes            = loadModule('./routes/auth',            'Routes auth');
 const itemsRoutes           = loadModule('./routes/items',           'Routes items');
 const rapportsRoutes        = loadModule('./routes/rapports',        'Routes rapports');
 const reponsesRoutes        = loadModule('./routes/reponses',        'Routes réponses');
@@ -49,7 +50,7 @@ app.use((req, _res, next) => {
 // CORS
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
@@ -64,6 +65,7 @@ if (validationMiddleware?.apiLimiter) {
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ROUTES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+app.use('/auth',            authRoutes);
 app.use('/items',           itemsRoutes);
 app.use('/rapports',        rapportsRoutes);
 app.use('/reponses',        reponsesRoutes);
