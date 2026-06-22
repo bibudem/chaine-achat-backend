@@ -442,6 +442,14 @@ const ReponsesModel = {
       delete cleanBase[k];
     }
 
+    // Normalisation : ancien nom de champ → nom de colonne tbl_items
+    if ('note_interne_bib' in cleanBase) {
+      if (!cleanBase.bibliotheque_note_interne) {
+        cleanBase.bibliotheque_note_interne = cleanBase.note_interne_bib;
+      }
+      delete cleanBase.note_interne_bib;
+    }
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -626,6 +634,8 @@ const ReponsesModel = {
                          r.reponses->>'statut_bibliotheque',
                          r.reponses->'baseData'->>'statut_bibliotheque') AS statut_bibliotheque,
                 i.suivi_acq,
+                i.statut_acq,
+                i.note_acq,
                 i.note_commentaire
            FROM tbl_reponses r
            LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree

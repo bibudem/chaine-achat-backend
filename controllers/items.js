@@ -248,13 +248,14 @@ const itemsController = {
       const limit  = Math.min(Math.max(parseInt(req.query.limit)  || 50, 1), 200);
       const offset = Math.max(parseInt(req.query.offset) || 0, 0);
 
-      const search          = (req.query.search          || '').trim();
-      const bibliotheque    = (req.query.bibliotheque    || '').trim();
-      const statut          = (req.query.statut          || '').trim();
-      const suivi_acq       = (req.query.suivi_acq       || '').trim();
-      const formulaire_type = (req.query.formulaire_type || '').trim();
+      const search           = (req.query.search           || '').trim();
+      const bibliotheque     = (req.query.bibliotheque     || '').trim();
+      const statut           = (req.query.statut           || '').trim();
+      const suivi_acq        = (req.query.suivi_acq        || '').trim();
+      const formulaire_type  = (req.query.formulaire_type  || '').trim();
+      const fonds_budgetaire = (req.query.fonds_budgetaire || '').trim();
 
-      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','isbn_issn','demandeur','bibliotheque','statut_bibliotheque','suivi_acq','date_creation']);
+      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','isbn_issn','demandeur','bibliotheque','fonds_budgetaire','statut_bibliotheque','suivi_acq','date_creation']);
       const sortCol = SORT_COLS.has(req.query.sort) ? req.query.sort : 'date_creation';
       const sortDir = req.query.order === 'asc' ? 'ASC' : 'DESC';
 
@@ -281,6 +282,10 @@ const itemsController = {
       if (formulaire_type) {
         params.push(formulaire_type);
         conditions.push(`formulaire_type = $${params.length}`);
+      }
+      if (fonds_budgetaire) {
+        params.push(`%${fonds_budgetaire}%`);
+        conditions.push(`fonds_budgetaire ILIKE $${params.length}`);
       }
 
       const where          = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
