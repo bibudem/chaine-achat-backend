@@ -41,7 +41,7 @@ const ImportLogsModel = {
     return rows[0];
   },
 
-  async getAll({ page = 1, limit = 20, formulaire_type = null, statut = null } = {}) {
+  async getAll({ page = 1, limit = 20, formulaire_type = null, statut = null, utilisateur = null, date_debut = null, date_fin = null } = {}) {
     const offset     = (page - 1) * limit;
     const conditions = [];
     const params     = [];
@@ -53,6 +53,18 @@ const ImportLogsModel = {
     if (statut) {
       params.push(statut);
       conditions.push(`statut = $${params.length}`);
+    }
+    if (utilisateur) {
+      params.push(`%${utilisateur}%`);
+      conditions.push(`utilisateur ILIKE $${params.length}`);
+    }
+    if (date_debut) {
+      params.push(date_debut);
+      conditions.push(`date_import >= $${params.length}::date`);
+    }
+    if (date_fin) {
+      params.push(date_fin);
+      conditions.push(`date_import < ($${params.length}::date + interval '1 day')`);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
