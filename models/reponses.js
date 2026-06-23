@@ -437,8 +437,8 @@ const ReponsesModel = {
       ...baseData,
     });
 
-    // Ces champs appartiennent à tbl_reponses ou tbl_suggestion_achat, pas à tbl_items
-    for (const k of ['usager_nom', 'usager_statut', 'usager_courriel']) {
+    // Ces champs appartiennent à tbl_reponses, tbl_suggestion_achat, ou aux méta-données de formulaire — pas à tbl_items
+    for (const k of ['usager_nom', 'usager_statut', 'usager_courriel', 'send_notification']) {
       delete cleanBase[k];
     }
 
@@ -493,6 +493,67 @@ const ReponsesModel = {
         throw new Error(`Champ de statut non autorisé : ${statut_field}`);
       }
       const col = statut_field; // validé par whitelist
+
+      // Cas spécial statut_bibliotheque : les demandes non converties ont ce champ dans le JSONB,
+      // pas dans tbl_items. On fait un UNION pour couvrir les deux cas.
+      if (col === 'statut_bibliotheque') {
+        const [{ rows: reponses }, { rows: countRows }] = await Promise.all([
+          pool.query(
+            `-- Partie 1 : réponses non converties (item_id_cree IS NULL), valeur dans le JSONB
+             SELECT r.id                                         AS id,
+                    r.type_formulaire,
+                    r.usager_nom,
+                    r."dateA",
+                    'reponse'        AS source,
+                    NULL::int        AS item_id,
+                    NULL::varchar    AS suivi_acq,
+                    NULL::varchar    AS statut_acq
+               FROM tbl_reponses r
+              WHERE r.item_id_cree IS NULL
+                AND (r.statut_approbation IS NULL OR r.statut_approbation != 'item_supprime')
+                AND (   r.reponses->>'statut_bibliotheque' = $2
+                     OR r.reponses->'baseData'->>'statut_bibliotheque' = $2)
+
+             UNION ALL
+
+             -- Partie 2 : items déjà convertis dans tbl_items, sans décision ACQ encore prise
+             SELECT COALESCE(r2.id, i.item_id)                  AS id,
+                    i.formulaire_type                            AS type_formulaire,
+                    COALESCE(r2.usager_nom, i.demandeur)        AS usager_nom,
+                    i.date_creation                              AS "dateA",
+                    CASE WHEN r2.id IS NULL THEN 'import'
+                         ELSE 'reponse-created' END             AS source,
+                    i.item_id                                    AS item_id,
+                    i.suivi_acq,
+                    i.statut_acq
+               FROM tbl_items i
+               LEFT JOIN tbl_reponses r2 ON r2.item_id_cree = i.item_id
+              WHERE i.statut_bibliotheque = $2
+                AND (i.suivi_acq IS NULL OR i.suivi_acq = '')
+
+             ORDER BY "dateA" DESC
+             LIMIT $1`,
+            [limit, statut_value]
+          ),
+          pool.query(
+            `SELECT COUNT(*)::int AS total FROM (
+               SELECT r.id FROM tbl_reponses r
+                WHERE r.item_id_cree IS NULL
+                  AND (r.statut_approbation IS NULL OR r.statut_approbation != 'item_supprime')
+                  AND (   r.reponses->>'statut_bibliotheque' = $1
+                       OR r.reponses->'baseData'->>'statut_bibliotheque' = $1)
+               UNION ALL
+               SELECT i.item_id FROM tbl_items i
+                WHERE i.statut_bibliotheque = $1
+                  AND (i.suivi_acq IS NULL OR i.suivi_acq = '')
+             ) sub`,
+            [statut_value]
+          )
+        ]);
+        return { count: countRows[0].total, reponses };
+      }
+
+      // Autres champs (suivi_acq, statut_acq) : filtre direct sur tbl_items
       const [{ rows: reponses }, { rows: countRows }] = await Promise.all([
         pool.query(
           `SELECT COALESCE(r.id, i.item_id)                                       AS id,
