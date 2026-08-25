@@ -28,6 +28,29 @@ function _notifierN8n(url, logKey, rowId, payload) {
     });
 }
 
+// Matérialise immédiatement l'item dans tbl_items (au lieu d'attendre l'ouverture de la
+// notification) afin que la demande soit visible tout de suite dans Recherche/Rapport,
+// avec ses valeurs par défaut (statut_bibliotheque/statut_acq). Non bloquant : si ça échoue,
+// l'item sera quand même créé plus tard via le mécanisme existant (ouverture de la notification).
+//
+// Volontairement limité aux demandes déjà soumises aux ACQ (statut_bibliotheque =
+// "Soumettre aux ACQ") : au-delà de ce statut, l'édition du brouillon est bloquée côté
+// tbl_reponses (voir ReponsesModel.updateReponses), donc l'item matérialisé ne peut plus
+// diverger. Un brouillon encore "Saisie en cours…" reste non matérialisé, comme avant,
+// pour ne pas désynchroniser tbl_items si l'usager continue de le modifier (updateReponse
+// ne met à jour que tbl_reponses, jamais l'item déjà créé).
+async function _materialiserItem(reponseId, baseData, logKey) {
+  if (baseData?.statut_bibliotheque !== 'Soumettre aux ACQ') return null;
+  try {
+    const itemId = await ReponsesModel.creerItemDepuisReponse(reponseId);
+    console.log(`✅ [${logKey}] item créé immédiatement — réponse #${reponseId} → item #${itemId}`);
+    return itemId;
+  } catch (err) {
+    console.error(`⚠️  [${logKey}] création immédiate de l'item échouée pour la réponse #${reponseId}:`, err.message);
+    return null;
+  }
+}
+
 async function _creerFormulaire(req, res, typeFormulaire, n8nUrl, logKey) {
   const { usager_nom, usager_courriel, usager_statut, reponses } = req.body;
   if (!reponses?.baseData) return res.status(400).json({ error: 'reponses.baseData est requis.' });
@@ -36,11 +59,12 @@ async function _creerFormulaire(req, res, typeFormulaire, n8nUrl, logKey) {
       type_formulaire: typeFormulaire, usager_nom, usager_courriel, usager_statut, reponses
     });
     const { baseData = {}, specificData = {} } = reponses;
+    const itemId = await _materialiserItem(row.id, baseData, logKey);
     _notifierN8n(n8nUrl, logKey, row.id, {
       id: row.id, type_formulaire: typeFormulaire,
       usager_nom, usager_courriel, usager_statut, baseData, specificData
     });
-    return res.status(201).json({ message: `${typeFormulaire} enregistré.`, id: row.id, dateA: row.dateA });
+    return res.status(201).json({ message: `${typeFormulaire} enregistré.`, id: row.id, dateA: row.dateA, item_id: itemId });
   } catch (err) {
     console.error(`[${logKey}] create:`, err);
     return res.status(500).json({ error: "Erreur lors de l'enregistrement." });
@@ -150,6 +174,8 @@ const ReponsesController = {
       const baseData = reponses.baseData || {};
       const specificData = reponses.specificData || {};
 
+      const itemId = await _materialiserItem(row.id, baseData, 'nouvel-achat');
+
       // Notifier n8n /nouvel-achat (fire-and-forget)
       const n8nPayload = {
         id:              row.id,
@@ -181,8 +207,9 @@ const ReponsesController = {
 
       return res.status(201).json({
         message: 'Nouvel achat unique enregistré.',
-        id:    row.id,
-        dateA: row.dateA
+        id:      row.id,
+        dateA:   row.dateA,
+        item_id: itemId
       });
 
     } catch (err) {

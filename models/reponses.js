@@ -459,6 +459,15 @@ const ReponsesModel = {
       delete cleanBase.note_interne_bib;
     }
 
+    // Une demande soumise directement avec statut_bibliotheque = "Soumettre aux ACQ" (sans
+    // passer par l'édition admin) doit être visible dès sa création dans Recherche/Rapport :
+    // on initialise les champs de décision ACQ à leur valeur "en attente" respective, s'ils
+    // ne sont pas déjà fournis (mêmes valeurs que ItemFormulaireComponent côté admin).
+    if (cleanBase.statut_bibliotheque === 'Soumettre aux ACQ') {
+      if (!cleanBase.statut_acq) cleanBase.statut_acq = 'En attente';           // dircolAcqStatutOptions
+      if (!cleanBase.suivi_acq)  cleanBase.suivi_acq  = 'En attente de traitement'; // dircolAcqSuiviOptions
+    }
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -494,8 +503,8 @@ const ReponsesModel = {
   },
 
   // ── Items en attente de statut bibliothèque ───────────────────────────────
-  // Part 1 : réponses sans item créé (jamais ouvertes)
-  // Part 2 : items dont statut_bibliotheque est vide ou "Saisie en cours - En attente"
+  // Basé uniquement sur tbl_items (les demandes "Soumettre aux ACQ" y sont matérialisées
+  // immédiatement — voir _materialiserItem côté contrôleur).
   // Avec statut_field/statut_value : filtre sur un champ précis de tbl_items (ex. suivi_acq)
   async getPending(limit = 5, statut_field = null, statut_value = null) {
     const ALLOWED_FIELDS = ['suivi_acq', 'statut_bibliotheque', 'statut_acq'];
@@ -506,59 +515,37 @@ const ReponsesModel = {
       }
       const col = statut_field; // validé par whitelist
 
-      // Cas spécial statut_bibliotheque : les demandes non converties ont ce champ dans le JSONB,
-      // pas dans tbl_items. On fait un UNION pour couvrir les deux cas.
+      // Cas spécial statut_bibliotheque : les demandes soumises directement en "Soumettre aux ACQ"
+      // sont matérialisées immédiatement dans tbl_items (voir _materialiserItem côté contrôleur) —
+      // la notification se base donc uniquement sur tbl_items, plus besoin de couvrir le cas
+      // "réponse pas encore convertie" séparément.
       if (col === 'statut_bibliotheque') {
         const [{ rows: reponses }, { rows: countRows }] = await Promise.all([
           pool.query(
-            `-- Partie 1 : réponses non converties (item_id_cree IS NULL), valeur dans le JSONB
-             SELECT r.id                                         AS id,
-                    r.type_formulaire,
-                    r.usager_nom,
-                    r."dateA",
-                    'reponse'        AS source,
-                    NULL::int        AS item_id,
-                    NULL::varchar    AS suivi_acq,
-                    NULL::varchar    AS statut_acq
-               FROM tbl_reponses r
-              WHERE r.item_id_cree IS NULL
-                AND (r.statut_approbation IS NULL OR r.statut_approbation != 'item_supprime')
-                AND (   r.reponses->>'statut_bibliotheque' = $2
-                     OR r.reponses->'baseData'->>'statut_bibliotheque' = $2)
-
-             UNION ALL
-
-             -- Partie 2 : items déjà convertis dans tbl_items, sans décision ACQ encore prise
-             SELECT COALESCE(r2.id, i.item_id)                  AS id,
+            `SELECT COALESCE(r.id, i.item_id)                  AS id,
                     i.formulaire_type                            AS type_formulaire,
-                    COALESCE(r2.usager_nom, i.demandeur)        AS usager_nom,
+                    COALESCE(r.usager_nom, i.demandeur)         AS usager_nom,
                     i.date_creation                              AS "dateA",
-                    CASE WHEN r2.id IS NULL THEN 'import'
-                         ELSE 'reponse-created' END             AS source,
+                    CASE WHEN r.id IS NULL THEN 'import'
+                         ELSE 'reponse-created' END              AS source,
                     i.item_id                                    AS item_id,
                     i.suivi_acq,
                     i.statut_acq
                FROM tbl_items i
-               LEFT JOIN tbl_reponses r2 ON r2.item_id_cree = i.item_id
+               LEFT JOIN tbl_reponses r ON r.item_id_cree = i.item_id
               WHERE i.statut_bibliotheque = $2
-                AND (i.suivi_acq IS NULL OR i.suivi_acq = '')
-
-             ORDER BY "dateA" DESC
-             LIMIT $1`,
+                AND (i.suivi_acq  IS NULL OR i.suivi_acq  = '' OR i.suivi_acq  = 'En attente de traitement')
+                AND (i.statut_acq IS NULL OR i.statut_acq = '' OR i.statut_acq = 'En attente')
+              ORDER BY "dateA" DESC
+              LIMIT $1`,
             [limit, statut_value]
           ),
           pool.query(
-            `SELECT COUNT(*)::int AS total FROM (
-               SELECT r.id FROM tbl_reponses r
-                WHERE r.item_id_cree IS NULL
-                  AND (r.statut_approbation IS NULL OR r.statut_approbation != 'item_supprime')
-                  AND (   r.reponses->>'statut_bibliotheque' = $1
-                       OR r.reponses->'baseData'->>'statut_bibliotheque' = $1)
-               UNION ALL
-               SELECT i.item_id FROM tbl_items i
-                WHERE i.statut_bibliotheque = $1
-                  AND (i.suivi_acq IS NULL OR i.suivi_acq = '')
-             ) sub`,
+            `SELECT COUNT(*)::int AS total
+               FROM tbl_items i
+              WHERE i.statut_bibliotheque = $1
+                AND (i.suivi_acq  IS NULL OR i.suivi_acq  = '' OR i.suivi_acq  = 'En attente de traitement')
+                AND (i.statut_acq IS NULL OR i.statut_acq = '' OR i.statut_acq = 'En attente')`,
             [statut_value]
           )
         ]);
