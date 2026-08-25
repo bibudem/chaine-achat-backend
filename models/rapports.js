@@ -135,8 +135,8 @@ async function rapportDetaille(filters = {}, limit = 100, offset = 0) {
     const value = filters[apiKey];
     if (value === undefined || value === null || value === '') continue;
 
-    // Recherche partielle ILIKE pour le demandeur
-    if (apiKey === 'demandeur' && typeof value === 'string') {
+    // Recherche partielle ILIKE pour le demandeur et le fonds budgétaire
+    if ((apiKey === 'demandeur' || apiKey === 'fonds') && typeof value === 'string') {
       conditions.push(`${dbCol} ILIKE $${idx}`);
       params.push(`%${value}%`);
       idx += 1;
