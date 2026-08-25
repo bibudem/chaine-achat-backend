@@ -1,4 +1,5 @@
 const pool = require('../config/postgres.config');
+const PiecesJointesModel = require('../models/pieces-jointes');
 
 console.log('🎯 Chargement du contrôleur items...');
 
@@ -59,6 +60,9 @@ const itemsController = {
           [newItem.item_id, reponse_id]
         );
         console.log(`🔗 tbl_reponses #${reponse_id} → item_id_cree = ${newItem.item_id}`);
+
+        // Relier les pièces jointes déjà uploadées sur cette réponse
+        await PiecesJointesModel.lierItem(client, reponse_id, newItem.item_id);
       }
 
       await client.query('COMMIT');

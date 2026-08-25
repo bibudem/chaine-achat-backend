@@ -1,4 +1,5 @@
 const pool = require('../config/postgres.config');
+const PiecesJointesModel = require('./pieces-jointes');
 
 // ── Helpers internes ──────────────────────────────────────────────────────────
 
@@ -152,6 +153,9 @@ const ReponsesModel = {
         [itemId, reponse.id]
       );
 
+      // 5. Relier les pièces jointes déjà uploadées sur cette réponse
+      await PiecesJointesModel.lierItem(client, reponse.id, itemId);
+
       await client.query('COMMIT');
       return itemId;
 
@@ -291,6 +295,9 @@ const ReponsesModel = {
         [itemId, reponse.id]
       );
 
+      // Relier les pièces jointes déjà uploadées sur cette réponse
+      await PiecesJointesModel.lierItem(client, reponse.id, itemId);
+
       await client.query('COMMIT');
       return itemId;
 
@@ -332,6 +339,8 @@ const ReponsesModel = {
         'UPDATE tbl_reponses SET item_id_cree = $1 WHERE id = $2',
         [itemId, reponse.id]
       );
+      // Relier les pièces jointes déjà uploadées sur cette réponse
+      await PiecesJointesModel.lierItem(client, reponse.id, itemId);
       await client.query('COMMIT');
       return itemId;
     } catch (err) {
@@ -470,6 +479,9 @@ const ReponsesModel = {
         'UPDATE tbl_reponses SET item_id_cree = $1 WHERE id = $2',
         [itemId, reponseId]
       );
+
+      // Relier les pièces jointes déjà uploadées sur cette réponse
+      await PiecesJointesModel.lierItem(client, reponseId, itemId);
 
       await client.query('COMMIT');
       return itemId;

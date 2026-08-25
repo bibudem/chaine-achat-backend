@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const PiecesJointesController = require('../controllers/pieces-jointes');
 
 console.log('🛣️ Initialisation des routes items...');
 
@@ -70,6 +71,13 @@ router.get('/type/:type', itemsController.getItemsByType);
 
 // FILTER BY STATUS - Filtrer par statut
 router.get('/status/:status', itemsController.getItemsByStatus);
+
+// ==================== PIÈCES JOINTES (admin) ====================
+// Consultation/ajout direct sur la fiche item (avec ou sans réponse usager d'origine).
+router.post('/:id/pieces-jointes',
+  PiecesJointesController.uploadMiddleware,
+  PiecesJointesController.uploadForItem);
+router.get('/:id/pieces-jointes', PiecesJointesController.listByItem);
 
 // ==================== ROUTE DE TEST ====================
 

@@ -1,6 +1,7 @@
-const express            = require('express');
-const router             = express.Router();
-const ReponsesController = require('../controllers/reponses');
+const express             = require('express');
+const router              = express.Router();
+const ReponsesController  = require('../controllers/reponses');
+const PiecesJointesController = require('../controllers/pieces-jointes');
 
 // ─────────────────────────────────────────────────────────────
 // SUGGESTION D'ACHAT
@@ -45,6 +46,16 @@ router.get('/decision',             ReponsesController.decisionFormulaire);
 // POST /reponses/:id/creer-item
 // ─────────────────────────────────────────────────────────────
 router.post('/:id/creer-item',      ReponsesController.creerItem);
+
+// ─────────────────────────────────────────────────────────────
+// PIÈCES JOINTES (courriel .msg/.eml, PDF, Excel)
+// ─────────────────────────────────────────────────────────────
+router.post('/:id/pieces-jointes',
+  PiecesJointesController.uploadMiddleware,
+  PiecesJointesController.upload);
+router.get('/:id/pieces-jointes',              PiecesJointesController.list);
+router.get('/pieces-jointes/:pieceId/telecharger', PiecesJointesController.download);
+router.delete('/pieces-jointes/:pieceId',      PiecesJointesController.remove);
 
 // ─────────────────────────────────────────────────────────────
 // DÉCISION API JSON (pour n8n)
