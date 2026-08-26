@@ -58,10 +58,16 @@ const PiecesJointesController = {
       const reponse = await ReponsesModel.findById(reponseId);
       if (!reponse) return res.status(404).json({ error: 'Réponse introuvable.' });
 
+      // Si l'item a déjà été matérialisé avant cet upload (ex. demande soumise
+      // directement en "Soumettre aux ACQ" — voir _materialiserItem côté contrôleur
+      // reponses), lierItem() est déjà passé et ne repassera plus derrière ces
+      // fichiers. On renseigne donc item_id dès l'insertion pour ne pas les laisser
+      // orphelins (invisibles quand on consulte l'item par la suite).
       const inserted = [];
       for (const file of req.files) {
         const piece = await PiecesJointesModel.create({
           reponse_id:    reponseId,
+          item_id:       reponse.item_id_cree || null,
           nom_fichier:   decoderNomFichier(file.originalname),
           type_mime:     file.mimetype,
           taille_octets: file.size,
