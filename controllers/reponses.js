@@ -479,7 +479,10 @@ const ReponsesController = {
     try {
       const updated = await ReponsesModel.updateReponses(id, reponses);
       if (!updated) return res.status(403).json({ error: 'Modification non autorisée ou demande introuvable.' });
-      res.json({ success: true });
+      // Une demande déjà existante (brouillon) qu'on bascule à "Soumettre aux ACQ" lors d'une
+      // modification doit elle aussi être matérialisée immédiatement, comme à la création.
+      const itemId = await _materialiserItem(id, reponses.baseData, 'patch-reponses');
+      res.json({ success: true, item_id: itemId });
     } catch (err) {
       console.error('[patchReponses]', err);
       res.status(500).json({ error: 'Erreur lors de la mise à jour.' });
