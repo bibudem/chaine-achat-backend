@@ -92,6 +92,12 @@ const ReponsesController = {
         reponses
       });
 
+      // Suggestion est en format plat (pas de baseData/specificData) : statut_bibliotheque
+      // est directement sur `reponses` — même mécanisme que les 5 autres types de formulaire
+      // (voir _materialiserItem, plus haut) pour matérialiser l'item dès la soumission si
+      // "Soumettre aux ACQ" est déjà choisi.
+      const itemId = await _materialiserItem(row.id, reponses, 'suggestion');
+
       // Notifier n8n /suggestion (fire-and-forget)
       axios.post(N8N_SUGGESTION_URL, {
         id:              row.id,
@@ -106,8 +112,9 @@ const ReponsesController = {
 
       return res.status(201).json({
         message: 'Suggestion enregistrée.',
-        id:    row.id,
-        dateA: row.dateA
+        id:      row.id,
+        dateA:   row.dateA,
+        item_id: itemId
       });
 
     } catch (err) {
@@ -481,7 +488,9 @@ const ReponsesController = {
       if (!updated) return res.status(403).json({ error: 'Modification non autorisée ou demande introuvable.' });
       // Une demande déjà existante (brouillon) qu'on bascule à "Soumettre aux ACQ" lors d'une
       // modification doit elle aussi être matérialisée immédiatement, comme à la création.
-      const itemId = await _materialiserItem(id, reponses.baseData, 'patch-reponses');
+      // Suggestion d'achat est en format plat (pas de reponses.baseData) — statut_bibliotheque
+      // est alors directement sur reponses.
+      const itemId = await _materialiserItem(id, reponses.baseData || reponses, 'patch-reponses');
       res.json({ success: true, item_id: itemId });
     } catch (err) {
       console.error('[patchReponses]', err);
