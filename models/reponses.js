@@ -38,7 +38,7 @@ async function insertSpecificTable(client, itemId, formulaireType, data) {
 
 // Clés propres aux tables spécifiques de Suggestion (format plat)
 const SUGGESTION_SPEC_KEYS = [
-  'auteur', 'usager_faculte', 'bibliothecaire_disciplinaire',
+  'auteur', 'usager_nom', 'usager_faculte', 'bibliothecaire_disciplinaire',
   'aviser_reservation', 'aviser_reception', 'date_requise_cours',
   'note_usager', 'reserve_cours', 'reserve_cours_sigle', 'bordereau_imprime',
   'acq_raison_annulation', 'techdoc_suggestion_transmise', 'acq_isbn',
@@ -113,11 +113,12 @@ const ReponsesModel = {
       // 2. tbl_suggestion_achat
       await client.query(
         `INSERT INTO tbl_suggestion_achat (
-          item_id, auteur, usager_statut, usager_faculte, usager_courriel,
+          item_id, auteur, usager_nom, usager_statut, usager_faculte, usager_courriel,
           bibliothecaire_disciplinaire, aviser_reservation, aviser_reception, date_requise_cours
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         ON CONFLICT (item_id) DO UPDATE SET
           auteur                       = EXCLUDED.auteur,
+          usager_nom                   = EXCLUDED.usager_nom,
           bibliothecaire_disciplinaire = EXCLUDED.bibliothecaire_disciplinaire,
           aviser_reservation           = EXCLUDED.aviser_reservation,
           aviser_reception             = EXCLUDED.aviser_reception,
@@ -125,6 +126,9 @@ const ReponsesModel = {
         [
           itemId,
           r.auteur                         || null,
+          // Nom de l'usager (étudiant/prof/chercheur) saisi dans le formulaire — distinct de
+          // reponse.usager_nom (le·la TechDoc qui soumet, déjà utilisé pour tbl_items.demandeur).
+          r.usager_nom                     || null,
           reponse.usager_statut            || null,
           r.usager_faculte                 || null,
           reponse.usager_courriel          || null,
