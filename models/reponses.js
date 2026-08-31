@@ -86,7 +86,7 @@ const ReponsesModel = {
           nombre_utilisateurs, source_information,
           bibliotheque, demandeur,
           note_commentaire, statut_bibliotheque, statut_acq
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
         RETURNING item_id`,
         [
           "Suggestion d'achat - Usager",                              // $1
@@ -98,14 +98,14 @@ const ReponsesModel = {
           r.date_publication    || null,                     // $7
           r.categorie_document  || null,                     // $8
           r.format_support      || null,                     // $9
-          r.format_electronique || null,                     // $10
-          r.acces_electronique  || null,                     // $11
-          r.source_information  || null,                     // $12
-          r.bibliotheque        || null,                     // $13
-          reponse.usager_nom    || null,                     // $14
-          r.note_commentaire    || null,                     // $15
-          'En attente en bibliothèque',                      // $16
-          'En attente'                                       // $17
+          // nombre_utilisateurs : non collecté par le formulaire Suggestion (à plat)
+          null,                                               // $10
+          r.source_information  || null,                     // $11
+          r.bibliotheque        || null,                     // $12
+          reponse.usager_nom    || null,                     // $13
+          r.note_commentaire    || null,                     // $14
+          'En attente en bibliothèque',                      // $15
+          'En attente'                                       // $16
         ]
       );
       const itemId = rows[0].item_id;
