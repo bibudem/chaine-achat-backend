@@ -674,7 +674,18 @@ const ReponsesModel = {
                 r."dateA",
                 r.statut_approbation,
                 r.commentaire_admin,
-                r.date_traitement,
+                -- r.date_traitement n'est renseigné que lors de l'étape d'approbation
+                -- initiale (approuve/refuse) ; la plupart des demandes matérialisées
+                -- passent directement en traitement ACQ sans jamais passer par cette
+                -- étape. On retombe alors sur la date de la décision ACQ (date de
+                -- dernière modification de l'item, une fois que celle-ci a un suivi
+                -- ou un statut ACQ) pour que "Date de traitement" reflète la vraie
+                -- date à laquelle la demande a été traitée par les ACQ.
+                COALESCE(
+                  r.date_traitement,
+                  CASE WHEN i.suivi_acq IS NOT NULL OR i.statut_acq IS NOT NULL
+                       THEN i.date_modification END
+                ) AS date_traitement,
                 r.usager_statut,
                 COALESCE(i.titre_document,
                          r.reponses->>'titre_document',
