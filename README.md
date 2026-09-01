@@ -12,6 +12,10 @@ Le frontend (Angular) se trouve dans un dépôt séparé.
 - Lister toutes les demandes (avec filtres par type, statut, date)
 - Générer des rapports
 - Gérer les informations de budget
+- Import en lot depuis un fichier Excel, avec journal des imports
+- Gestion des pièces jointes (ajout, téléchargement, suppression)
+- Notifications automatiques par courriel via n8n
+- Décision ACQ (approbation/refus) directement via un lien courriel
 - Authentification et accès sécurisé
 
 ## Prérequis
@@ -81,14 +85,14 @@ Le serveur démarre par défaut sur : `http://localhost:3000`
 ## Structure du projet
 
 ```text
-app-gestion-achats-backend/
+chaine-achat-backend/
 ├── server.js        # Point d’entrée de l’application
 ├── routes/          # Définition des endpoints
 ├── controllers/     # Logique métier des endpoints
 ├── models/          # Accès à la base de données
 ├── config/          # Configuration (DB, etc.)
 ├── package.json     # Dépendances backend
-├── .env.example     # Exemple de configuration d’environnement (optionnel)
+├── .env             # Configuration d’environnement (non versionné)
 └── README.md
 ```
 
