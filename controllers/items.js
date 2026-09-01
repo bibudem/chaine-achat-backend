@@ -258,6 +258,8 @@ const itemsController = {
       const suivi_acq        = (req.query.suivi_acq        || '').trim();
       const formulaire_type  = (req.query.formulaire_type  || '').trim();
       const fonds_budgetaire = (req.query.fonds_budgetaire || '').trim();
+      // Profil TDM (front-end) : ne restituer que les items routés vers le TDM.
+      const creationNoticeDtdm = req.query.creation_notice_dtdm;
 
       const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','isbn_issn','demandeur','bibliotheque','fonds_budgetaire','statut_bibliotheque','suivi_acq','date_creation']);
       const sortCol = SORT_COLS.has(req.query.sort) ? req.query.sort : 'date_creation';
@@ -290,6 +292,10 @@ const itemsController = {
       if (fonds_budgetaire) {
         params.push(`%${fonds_budgetaire}%`);
         conditions.push(`fonds_budgetaire ILIKE $${params.length}`);
+      }
+      if (creationNoticeDtdm === 'true' || creationNoticeDtdm === 'false') {
+        params.push(creationNoticeDtdm === 'true');
+        conditions.push(`creation_notice_dtdm = $${params.length}`);
       }
 
       const where          = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
