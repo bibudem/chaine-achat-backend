@@ -1,5 +1,7 @@
 const pool = require('../config/postgres.config');
 const PiecesJointesModel = require('../models/pieces-jointes');
+const { filterToTableColumns } = require('../util/db-columns');
+const { publicError } = require('../util/errors');
 
 console.log('🎯 Chargement du contrôleur items...');
 
@@ -27,10 +29,15 @@ const itemsController = {
       
       // Filtrer les valeurs vides
       const cleanedBaseData = cleanEmptyFields(fullBaseData);
-      
+
+      // Sécurité : ne garder que des clés qui sont de vraies colonnes de tbl_items — les clés
+      // du corps de requête (JSON client) ne doivent jamais être interpolées telles quelles
+      // dans le SQL (voir util/db-columns.js).
+      const safeBaseData = await filterToTableColumns('tbl_items', cleanedBaseData, ['item_id']);
+
       // 1. Insérer dans tbl_items
-      const itemColumns = Object.keys(cleanedBaseData).join(', ');
-      const itemValues = Object.values(cleanedBaseData);
+      const itemColumns = Object.keys(safeBaseData).join(', ');
+      const itemValues = Object.values(safeBaseData);
       const itemPlaceholders = itemValues.map((_, i) => `$${i + 1}`).join(', ');
       
       const itemQuery = `
@@ -78,7 +85,7 @@ const itemsController = {
       console.error('❌ Erreur POST:', error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: publicError(error)
       });
     } finally {
       client.release();
@@ -119,7 +126,7 @@ const itemsController = {
       console.error('❌ Erreur GET:', error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: publicError(error)
       });
     } finally {
       client.release();
@@ -144,9 +151,14 @@ const itemsController = {
 
       // Filtrer les valeurs vides
       const cleanedBaseData = cleanEmptyFields(baseData);
-      
+
+      // Sécurité : ne garder que des clés qui sont de vraies colonnes de tbl_items (voir
+      // util/db-columns.js) — jamais item_id, qui est déjà exclu de baseData ci-dessus mais
+      // reste explicitement bloqué ici par défense en profondeur.
+      const safeBaseData = await filterToTableColumns('tbl_items', cleanedBaseData, ['item_id']);
+
       // 1. Mettre à jour tbl_items
-      const entries = Object.entries(cleanedBaseData);
+      const entries = Object.entries(safeBaseData);
       
       if (entries.length > 0) {
         const setClause = entries.map(([key], i) => `${key} = $${i + 1}`).join(', ');
@@ -193,7 +205,7 @@ const itemsController = {
       console.error('❌ Erreur PUT:', error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: publicError(error)
       });
     } finally {
       client.release();
@@ -235,7 +247,7 @@ const itemsController = {
       console.error('❌ Erreur DELETE:', error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: publicError(error)
       });
     } finally {
       client.release();
@@ -335,7 +347,7 @@ const itemsController = {
 
     } catch (error) {
       console.error('❌ Erreur GET /all:', error);
-      res.status(500).json({ success: false, error: error.message });
+      res.status(500).json({ success: false, error: publicError(error) });
     } finally {
       client.release();
     }
@@ -382,7 +394,7 @@ const itemsController = {
       console.error('❌ Erreur GET /search:', error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: publicError(error)
       });
     } finally {
       client.release();
@@ -417,7 +429,7 @@ const itemsController = {
       console.error('❌ Erreur GET /type:', error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: publicError(error)
       });
     } finally {
       client.release();
@@ -452,7 +464,7 @@ const itemsController = {
       console.error('❌ Erreur GET /status:', error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: publicError(error)
       });
     } finally {
       client.release();
@@ -496,7 +508,7 @@ const itemsController = {
       console.error('❌ Erreur GET /statistics:', error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: publicError(error)
       });
     } finally {
       client.release();
@@ -524,8 +536,10 @@ const itemsController = {
       
       for (const itemData of req.body) {
         const cleaned = cleanEmptyFields(itemData);
-        const columns = Object.keys(cleaned).join(', ');
-        const values = Object.values(cleaned);
+        // Sécurité : voir util/db-columns.js — même protection que postItems/putItems.
+        const safe = await filterToTableColumns('tbl_items', cleaned, ['item_id']);
+        const columns = Object.keys(safe).join(', ');
+        const values = Object.values(safe);
         const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
         
         const query = `
@@ -553,7 +567,7 @@ const itemsController = {
       console.error('❌ Erreur POST /batch:', error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: publicError(error)
       });
     } finally {
       client.release();
@@ -611,13 +625,16 @@ async function insertSpecificData(client, itemId, formulaireType, data) {
       return;
   }
 
-  const filteredData = cleanEmptyFields(data);
+  const cleaned = cleanEmptyFields(data);
+  // Sécurité : ne garder que des clés qui sont de vraies colonnes de `tableName` (voir
+  // util/db-columns.js) — `data` vient de req.body.specificData, entièrement client-fourni.
+  const filteredData = await filterToTableColumns(tableName, cleaned, ['item_id']);
 
   if (Object.keys(filteredData).length === 0) {
     console.log('⚠️ Aucune donnée spécifique à insérer');
     return;
   }
-  
+
   const columns = ['item_id', ...Object.keys(filteredData)].join(', ');
   const values = [itemId, ...Object.values(filteredData)];
   const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
@@ -669,13 +686,16 @@ async function updateSpecificData(client, itemId, formulaireType, data) {
       return;
   }
 
-  const filteredData = cleanEmptyFields(data);
+  const cleaned = cleanEmptyFields(data);
+  // Sécurité : ne garder que des clés qui sont de vraies colonnes de `tableName` (voir
+  // util/db-columns.js) — `data` vient de req.body.specificData, entièrement client-fourni.
+  const filteredData = await filterToTableColumns(tableName, cleaned, ['item_id']);
 
   if (Object.keys(filteredData).length === 0) {
     console.log('Aucune donnée spécifique à mettre à jour');
     return;
   }
-  
+
   const checkQuery = `SELECT item_id FROM ${tableName} WHERE item_id = $1`;
   const checkResult = await client.query(checkQuery, [itemId]);
   

@@ -1,5 +1,6 @@
 const ReponsesModel = require('../models/reponses');
 const axios         = require('axios');
+const { publicError } = require('../util/errors');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:4200';
 
@@ -383,7 +384,7 @@ const ReponsesController = {
 
     } catch (err) {
       console.error('[decisionApi]', err);
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({ success: false, error: publicError(err) });
     }
   },
 
@@ -400,7 +401,7 @@ const ReponsesController = {
       res.json({ success: true, item_id: itemId, reponse_id: reponseId });
     } catch (err) {
       console.error('[creerItem]', err.message);
-      res.status(500).json({ success: false, error: err.message });
+      res.status(500).json({ success: false, error: publicError(err) });
     }
   },
 

@@ -1,11 +1,12 @@
 const ConfigModel = require('../models/config');
+const { publicError } = require('../util/errors');
 
 const sendSuccess = (res, data, msg = 'OK') =>
   res.json({ success: true, message: msg, data, timestamp: new Date().toISOString() });
 
 const sendError = (res, err, context = '') => {
   console.error(`[config.${context}]`, err.message);
-  res.status(500).json({ success: false, error: err.message });
+  res.status(500).json({ success: false, error: publicError(err) });
 };
 
 /* GET /config */

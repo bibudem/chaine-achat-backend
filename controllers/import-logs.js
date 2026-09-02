@@ -1,4 +1,5 @@
 const ImportLogsModel = require('../models/import-logs');
+const { publicError } = require('../util/errors');
 
 const ImportLogsController = {
 
@@ -16,7 +17,7 @@ const ImportLogsController = {
       res.json({ success: true, ...result });
     } catch (err) {
       console.error('[import-logs] getAll:', err);
-      res.status(500).json({ success: false, error: err.message });
+      res.status(500).json({ success: false, error: publicError(err) });
     }
   },
 
@@ -27,7 +28,7 @@ const ImportLogsController = {
       res.json({ success: true, data: log });
     } catch (err) {
       console.error('[import-logs] getById:', err);
-      res.status(500).json({ success: false, error: err.message });
+      res.status(500).json({ success: false, error: publicError(err) });
     }
   }
 };

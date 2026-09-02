@@ -1,5 +1,6 @@
 const Logs = require('../models/home');
 const pool = require('../config/postgres.config');
+const { publicError } = require('../util/errors');
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    HELPER — périodes autorisées (whitelist sécurité)
@@ -20,7 +21,7 @@ const sendError = (res, err, context = '') => {
   console.error(`❌ Erreur ${context}:`, err);
   res.status(err.statusCode || 500).json({
     success: false,
-    error: err.message || 'Erreur serveur',
+    error: publicError(err, 'Erreur serveur'),
     timestamp: new Date().toISOString()
   });
 };

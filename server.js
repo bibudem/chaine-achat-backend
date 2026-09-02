@@ -2,6 +2,8 @@ if (process.env.NODE_ENV !== 'production') {
   try { require('dotenv').config(); } catch { /* non disponible hors dev */ }
 }
 const express = require('express');
+const helmet = require('helmet');
+const { publicError } = require('./util/errors');
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -38,6 +40,8 @@ const validationMiddleware  = loadModule('./middleware/validation.middleware', '
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 // Lambda 1 niveau de proxy
 app.set('trust proxy', 1);
+// En-têtes de sécurité HTTP (CSP désactivée : API JSON pure, ne sert aucune page HTML).
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -48,8 +52,15 @@ app.use((req, _res, next) => {
 });
 
 // CORS
+// En production, CORS_ORIGIN doit être explicitement défini (domaine du frontend) — pas de
+// retour à '*' par défaut, qui autoriserait n'importe quel site à appeler l'API depuis le
+// navigateur d'un usager. Si non défini en prod, l'en-tête n'est simplement pas envoyé : les
+// appels directs (serveur à serveur, curl) ne sont pas affectés par CORS de toute façon —
+// seul l'accès cross-origin depuis un navigateur est bloqué. En développement, '*' reste la
+// valeur par défaut pour ne pas gêner le travail local.
+const CORS_ORIGIN = process.env.CORS_ORIGIN || (process.env.NODE_ENV === 'production' ? '' : '*');
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
+  if (CORS_ORIGIN) res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
@@ -121,7 +132,7 @@ app.use((err, _req, res, _next) => {
   console.error('❌ Erreur serveur:', err);
   res.status(err.statusCode || 500).json({
     success: false,
-    error: err.message || 'Erreur serveur interne',
+    error: publicError(err),
     timestamp: new Date().toISOString()
   });
 });

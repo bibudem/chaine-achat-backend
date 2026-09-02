@@ -1,5 +1,6 @@
 const pool = require('../config/postgres.config');
 const PiecesJointesModel = require('./pieces-jointes');
+const { filterToTableColumns } = require('../util/db-columns');
 
 // ── Helpers internes ──────────────────────────────────────────────────────────
 
@@ -23,7 +24,10 @@ const TYPE_TABLE_MAP = {
 async function insertSpecificTable(client, itemId, formulaireType, data) {
   const tableName = TYPE_TABLE_MAP[formulaireType];
   if (!tableName) return;
-  const clean = cleanEmptyFields(data);
+  const cleanedRaw = cleanEmptyFields(data);
+  // Sécurité : ne garder que des clés qui sont de vraies colonnes de `tableName` — `data`
+  // vient du JSON de la demande stockée par l'usager, voir util/db-columns.js.
+  const clean = await filterToTableColumns(tableName, cleanedRaw, ['item_id']);
   if (!Object.keys(clean).length) return;
   const cols = ['item_id', ...Object.keys(clean)];
   const vals = [itemId, ...Object.values(clean)];
@@ -476,8 +480,11 @@ const ReponsesModel = {
     try {
       await client.query('BEGIN');
 
-      const cols = Object.keys(cleanBase);
-      const vals = Object.values(cleanBase);
+      // Sécurité : ne garder que des clés qui sont de vraies colonnes de tbl_items — cleanBase
+      // vient du JSON de la demande stockée par l'usager, voir util/db-columns.js.
+      const safeBase = await filterToTableColumns('tbl_items', cleanBase, ['item_id']);
+      const cols = Object.keys(safeBase);
+      const vals = Object.values(safeBase);
       const phs  = vals.map((_, i) => `$${i + 1}`).join(', ');
 
       const { rows } = await client.query(

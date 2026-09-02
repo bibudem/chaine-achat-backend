@@ -3,6 +3,7 @@
 // Utilisé par le contrôleur import.js
 
 const pool = require('../config/postgres.config');
+const { filterToTableColumns } = require('../util/db-columns');
 
 console.log('📦 Chargement du modèle import...');
 
@@ -20,8 +21,12 @@ const TYPE_TABLE_MAP = {
 // ==================== INSERT ITEM DE BASE ====================
 async function insertItemBase(client, baseData) {
   const cleaned      = cleanEmptyFields(baseData);
-  const columns      = Object.keys(cleaned).join(', ');
-  const values       = Object.values(cleaned);
+  // Sécurité : ne garder que des clés qui sont de vraies colonnes de tbl_items — baseData peut
+  // provenir d'un JSON client-fourni (via la voie /reponses/* → approbation), voir
+  // util/db-columns.js.
+  const safe         = await filterToTableColumns('tbl_items', cleaned, ['item_id']);
+  const columns      = Object.keys(safe).join(', ');
+  const values       = Object.values(safe);
   const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
 
   const query = `
@@ -43,7 +48,10 @@ async function insertSpecificData(client, itemId, formulaireType, specificData) 
     return;
   }
 
-  const filtered = cleanEmptyFields(specificData);
+  const cleaned = cleanEmptyFields(specificData);
+  // Sécurité : ne garder que des clés qui sont de vraies colonnes de `tableName` — specificData
+  // peut provenir d'un JSON client-fourni, voir util/db-columns.js.
+  const filtered = await filterToTableColumns(tableName, cleaned, ['item_id']);
 
   if (Object.keys(filtered).length === 0) {
     console.warn('⚠️ Aucune donnée spécifique à insérer pour', formulaireType);

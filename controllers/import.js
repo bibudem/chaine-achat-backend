@@ -1,6 +1,7 @@
 const ExcelJS        = require('exceljs');
 const pool           = require('../config/postgres.config');
 const ImportLogsModel = require('../models/import-logs');
+const { publicError } = require('../util/errors');
 
 console.log('🎯 Chargement du contrôleur import...');
 
@@ -206,7 +207,7 @@ async function importExcel(req, res) {
       console.error('[import-log] impossible de sauvegarder le log d\'erreur:', logErr.message);
     }
 
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: publicError(error) });
   } finally {
     client.release();
   }
@@ -248,7 +249,7 @@ async function downloadTemplate(req, res) {
 
   } catch (error) {
     console.error('❌ Erreur génération modèle:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: publicError(error) });
   }
 }
 
