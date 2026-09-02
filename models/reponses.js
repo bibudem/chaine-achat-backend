@@ -721,6 +721,75 @@ const ReponsesModel = {
       [email]
     );
     return rows;
+  },
+
+  // ── Toutes les demandes du système, en lecture seule (profil Usager — transparence) ──
+  // Volontairement plus restreint que findByEmail : aucune information personnelle sur
+  // le demandeur (nom, courriel), aucun champ financier ni note interne — seulement de
+  // quoi identifier la demande et sa progression.
+  async findAllPublic({ limit = 25, offset = 0, search = null, type_formulaire = null, bibliotheque = null, dateDebut = null, dateFin = null, statut = null } = {}) {
+    const conditions = [];
+    const params     = [];
+
+    if (search) {
+      params.push(`%${search}%`);
+      conditions.push(`titre_document ILIKE $${params.length}`);
+    }
+    if (type_formulaire) {
+      params.push(type_formulaire);
+      conditions.push(`type_formulaire = $${params.length}`);
+    }
+    if (bibliotheque) {
+      params.push(bibliotheque);
+      conditions.push(`bibliotheque = $${params.length}`);
+    }
+    if (dateDebut) {
+      params.push(dateDebut);
+      conditions.push(`"dateA" >= $${params.length}`);
+    }
+    if (dateFin) {
+      params.push(dateFin);
+      conditions.push(`"dateA"::date <= $${params.length}`);
+    }
+    // Même catégorisation que demandeBadgeStatut() côté front (lib/DemandeStatut.ts) :
+    // 'attente' = pas encore soumise aux ACQ, 'soumise' = soumise, décision ACQ en attente,
+    // 'traitee' = soumise et déjà traitée par les ACQ (suivi_acq renseigné).
+    if (statut === 'attente') {
+      conditions.push(`(statut_bibliotheque IS DISTINCT FROM 'Soumettre aux ACQ')`);
+    } else if (statut === 'soumise') {
+      conditions.push(`(statut_bibliotheque = 'Soumettre aux ACQ' AND suivi_acq IS NULL)`);
+    } else if (statut === 'traitee') {
+      conditions.push(`(statut_bibliotheque = 'Soumettre aux ACQ' AND suivi_acq IS NOT NULL)`);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const baseQuery = `
+      FROM (
+         SELECT DISTINCT ON (r.id)
+                r.id,
+                r.type_formulaire,
+                r."dateA",
+                COALESCE(i.titre_document, r.reponses->>'titre_document', r.reponses->'baseData'->>'titre_document') AS titre_document,
+                COALESCE(i.bibliotheque,   r.reponses->>'bibliotheque',   r.reponses->'baseData'->>'bibliotheque')   AS bibliotheque,
+                COALESCE(i.statut_bibliotheque, r.reponses->>'statut_bibliotheque', r.reponses->'baseData'->>'statut_bibliotheque') AS statut_bibliotheque,
+                i.suivi_acq,
+                i.statut_acq
+           FROM tbl_reponses r
+           LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
+      ) sub
+      ${where}`;
+
+    const dataParams = [...params, limit, offset];
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+      pool.query(
+        `SELECT * ${baseQuery} ORDER BY "dateA" DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        dataParams
+      ),
+      pool.query(`SELECT COUNT(*) AS total ${baseQuery}`, params)
+    ]);
+
+    return { data: rows, total: parseInt(countRows[0].total, 10) };
   }
 };
 

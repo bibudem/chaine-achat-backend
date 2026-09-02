@@ -422,6 +422,30 @@ const ReponsesController = {
     }
   },
 
+  // GET /reponses/public — toutes les demandes du système, en lecture seule (profil Usager).
+  // Voir ReponsesModel.findAllPublic : ne renvoie volontairement aucune information
+  // personnelle (nom/courriel du demandeur), financière, ou note interne.
+  async getAllPublic(req, res) {
+    try {
+      const limit  = Math.min(Math.max(parseInt(req.query.limit)  || 25, 1), 100);
+      const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+      const { search, type_formulaire, bibliotheque, dateDebut, dateFin, statut } = req.query;
+      const result = await ReponsesModel.findAllPublic({
+        limit, offset,
+        search:           search           || null,
+        type_formulaire:  type_formulaire  || null,
+        bibliotheque:     bibliotheque      || null,
+        dateDebut:        dateDebut         || null,
+        dateFin:          dateFin           || null,
+        statut:           statut            || null,
+      });
+      res.json(result);
+    } catch (err) {
+      console.error('[public] getAllPublic:', err);
+      res.status(500).json({ error: 'Erreur lors de la récupération des demandes.' });
+    }
+  },
+
   async getPending(req, res) {
     const limit        = Math.min(parseInt(req.query.limit) || 5, 20);
     const statut_field = req.query.statut_field || null;

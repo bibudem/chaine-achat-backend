@@ -68,6 +68,7 @@ router.put('/:id/decision',         ReponsesController.decisionApi);
 // ─────────────────────────────────────────────────────────────
 router.get('/pending',              ReponsesController.getPending);
 router.get('/profil',               ReponsesController.getByEmail);
+router.get('/public',               ReponsesController.getAllPublic);
 router.get('/',                     ReponsesController.getAll);
 router.get('/:id',                  ReponsesController.getById);
 router.patch('/:id',                ReponsesController.patchReponses);
