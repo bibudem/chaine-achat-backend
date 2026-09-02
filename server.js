@@ -52,15 +52,13 @@ app.use((req, _res, next) => {
 });
 
 // CORS
-// En production, CORS_ORIGIN doit être explicitement défini (domaine du frontend) — pas de
-// retour à '*' par défaut, qui autoriserait n'importe quel site à appeler l'API depuis le
-// navigateur d'un usager. Si non défini en prod, l'en-tête n'est simplement pas envoyé : les
-// appels directs (serveur à serveur, curl) ne sont pas affectés par CORS de toute façon —
-// seul l'accès cross-origin depuis un navigateur est bloqué. En développement, '*' reste la
-// valeur par défaut pour ne pas gêner le travail local.
-const CORS_ORIGIN = process.env.CORS_ORIGIN || (process.env.NODE_ENV === 'production' ? '' : '*');
+// TODO sécurité : définir CORS_ORIGIN (domaine exact du frontend) dans l'environnement de
+// production pour remplacer ce '*' par défaut — voir historique git pour la version qui
+// bloque déjà correctement si CORS_ORIGIN est absent en prod (revert temporaire du 2026-09-02
+// : CORS_ORIGIN n'était pas configuré côté serveur, ce qui bloquait /config, /home/*, etc.
+// depuis le frontend). Remettre cette protection dès que CORS_ORIGIN est configuré en prod.
 app.use((req, res, next) => {
-  if (CORS_ORIGIN) res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
+  res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
