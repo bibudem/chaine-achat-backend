@@ -404,6 +404,13 @@ const ReponsesModel = {
               r.date_traitement, r.commentaire_admin,
               r.item_id_cree,
               i.suivi_acq,
+              -- L'item lié (item_id_cree) peut avoir été supprimé de tbl_items sans que la
+              -- réponse le sache : on remonte son existence réelle et son statut_bibliotheque
+              -- pour que le frontend applique la même garde de suppression que le backend
+              -- (ReponsesModel.deleteById) plutôt que de se fier au statut_bibliotheque figé
+              -- sur la réponse elle-même.
+              (i.item_id IS NOT NULL) AS item_existe,
+              i.statut_bibliotheque   AS item_statut_bibliotheque,
               COUNT(*) OVER() AS total_count
        FROM tbl_reponses r
        LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
@@ -636,7 +643,15 @@ const ReponsesModel = {
 
   async findById(id) {
     const { rows } = await pool.query(
-      `SELECT * FROM tbl_reponses WHERE id = $1`,
+      // Même logique que findAll ci-dessus : on remonte l'existence réelle et le
+      // statut_bibliotheque de l'item lié, indépendamment du statut_bibliotheque figé sur la
+      // réponse elle-même (voir commentaire dans findAll).
+      `SELECT r.*,
+              (i.item_id IS NOT NULL) AS item_existe,
+              i.statut_bibliotheque   AS item_statut_bibliotheque
+         FROM tbl_reponses r
+         LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
+        WHERE r.id = $1`,
       [id]
     );
     return rows[0] || null;
