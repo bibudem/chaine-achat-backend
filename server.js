@@ -52,13 +52,24 @@ app.use((req, _res, next) => {
 });
 
 // CORS
-// TODO sécurité : définir CORS_ORIGIN (domaine exact du frontend) dans l'environnement de
-// production pour remplacer ce '*' par défaut — voir historique git pour la version qui
-// bloque déjà correctement si CORS_ORIGIN est absent en prod (revert temporaire du 2026-09-02
-// : CORS_ORIGIN n'était pas configuré côté serveur, ce qui bloquait /config, /home/*, etc.
-// depuis le frontend). Remettre cette protection dès que CORS_ORIGIN est configuré en prod.
+// Liste blanche : le vrai domaine de prod + localhost:4200 (serveur de dev Angular par
+// défaut) — localhost:4200 doit toujours pouvoir appeler l'API, qu'on pointe vers un backend
+// local ou directement vers la prod pour tester avec de vraies données. CORS_ORIGIN, si défini
+// (liste séparée par des virgules), remplace entièrement cette liste.
+const DEFAULT_ALLOWED_ORIGINS = ['https://achats.bib.umontreal.ca', 'http://localhost:4200', 'http://127.0.0.1:4200'];
+const ALLOWED_ORIGINS = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : DEFAULT_ALLOWED_ORIGINS;
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  } else if (process.env.NODE_ENV !== 'production') {
+    // Hors production : on reste permissif (outils comme Postman, autres ports locaux, etc.)
+    // pour ne jamais gêner le travail local, même depuis une origine non listée.
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
