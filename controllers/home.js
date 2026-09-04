@@ -3,12 +3,14 @@ const pool = require('../config/postgres.config');
 const { publicError } = require('../util/errors');
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   HELPER — périodes autorisées (whitelist sécurité)
+   HELPER — période autorisée : une année (ex. "2026") ou "all". Toute autre valeur retombe
+   sur "all" — la validation stricte (entier, plage raisonnable) est refaite ici plutôt que
+   de faire confiance à models/home.js seul (défense en profondeur avant interpolation SQL).
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-const VALID_PERIODS = ['7days', '30days', '90days'];
-
 function sanitizePeriod(raw) {
-  return VALID_PERIODS.includes(raw) ? raw : '7days';
+  if (!raw || raw === 'all') return 'all';
+  const year = parseInt(raw, 10);
+  return Number.isInteger(year) && year >= 2000 && year <= 2100 ? String(year) : 'all';
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

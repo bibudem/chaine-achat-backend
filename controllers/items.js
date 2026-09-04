@@ -270,10 +270,16 @@ const itemsController = {
       const suivi_acq        = (req.query.suivi_acq        || '').trim();
       const formulaire_type  = (req.query.formulaire_type  || '').trim();
       const fonds_budgetaire = (req.query.fonds_budgetaire || '').trim();
+      const priorite_demande = (req.query.priorite_demande || '').trim();
       // Profil TDM (front-end) : ne restituer que les items routés vers le TDM.
       const creationNoticeDtdm = req.query.creation_notice_dtdm;
+      // Année de date_creation (ex. depuis le sélecteur du tableau de bord admin — voir
+      // models/home.js) : "all"/absent = pas de filtre. Paramétré (pas interpolé) car ici
+      // on a un tableau `params` sous la main, contrairement à home.js.
+      const anneeRaw = (req.query.annee || '').trim();
+      const annee    = anneeRaw && anneeRaw !== 'all' && /^\d{4}$/.test(anneeRaw) ? parseInt(anneeRaw, 10) : null;
 
-      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','isbn_issn','demandeur','bibliotheque','fonds_budgetaire','statut_bibliotheque','suivi_acq','date_creation']);
+      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','priorite_demande','isbn_issn','demandeur','bibliotheque','fonds_budgetaire','statut_bibliotheque','suivi_acq','date_creation']);
       const sortCol = SORT_COLS.has(req.query.sort) ? req.query.sort : 'date_creation';
       const sortDir = req.query.order === 'asc' ? 'ASC' : 'DESC';
 
@@ -305,9 +311,20 @@ const itemsController = {
         params.push(`%${fonds_budgetaire}%`);
         conditions.push(`fonds_budgetaire ILIKE $${params.length}`);
       }
+      if (priorite_demande) {
+        params.push(priorite_demande);
+        conditions.push(`priorite_demande = $${params.length}`);
+      }
       if (creationNoticeDtdm === 'true' || creationNoticeDtdm === 'false') {
         params.push(creationNoticeDtdm === 'true');
         conditions.push(`creation_notice_dtdm = $${params.length}`);
+      }
+      if (annee) {
+        // Intervalle plutôt que EXTRACT(YEAR FROM ...) = année : sargable, permet un index
+        // range scan sur date_creation au lieu d'un scan complet (voir même remarque dans
+        // models/home.js, yearWhereClause).
+        params.push(`${annee}-01-01`, `${annee + 1}-01-01`);
+        conditions.push(`date_creation >= $${params.length - 1} AND date_creation < $${params.length}`);
       }
 
       const where          = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
