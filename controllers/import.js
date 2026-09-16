@@ -17,6 +17,57 @@ const TYPE_TABLE_MAP = {
   "Suggestion d'achat - Usager": 'tbl_suggestion_achat',
 };
 
+// ==================== HELPER : LONGUEURS MAX DES COLONNES (messages d'erreur clairs) ====================
+let columnMaxLengthsCache = null;
+async function getColumnMaxLengths() {
+  if (columnMaxLengthsCache) return columnMaxLengthsCache;
+  const tables = ['tbl_items', ...Object.values(TYPE_TABLE_MAP)];
+  const { rows } = await pool.query(
+    `SELECT table_name, column_name, character_maximum_length
+     FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = ANY($1) AND character_maximum_length IS NOT NULL`,
+    [tables]
+  );
+  const map = {};
+  rows.forEach(r => {
+    map[r.table_name] = map[r.table_name] || {};
+    map[r.table_name][r.column_name] = r.character_maximum_length;
+  });
+  columnMaxLengthsCache = map;
+  return map;
+}
+
+// ==================== HELPER : MESSAGE D'ERREUR CLAIR (français, court) ====================
+// Traduit une erreur Postgres brute (code SQLSTATE) en message court et compréhensible pour
+// un admin qui ne connaît pas la base de données — au lieu du message technique du pilote pg.
+async function messageErreurClair(err, data, tableName) {
+  switch (err.code) {
+    case '23502': // NOT NULL violation — pg fournit le nom de colonne directement
+      return `Champ obligatoire manquant : « ${err.column || '?'} ».`;
+    case '23505':
+      return 'Doublon : cette ligne existe déjà.';
+    case '23503':
+      return 'Référence invalide (donnée liée introuvable).';
+    case '22P02':
+      return 'Format invalide pour une valeur (nombre, date ou texte attendu).';
+    case '22003':
+      return 'Un nombre est trop grand pour son champ.';
+    case '22001': { // valeur trop longue — on identifie le champ fautif via les longueurs max
+      const limits = (await getColumnMaxLengths())[tableName] || {};
+      const champFautif = Object.keys(data || {}).find(col => {
+        const max = limits[col];
+        const val = data[col];
+        return max != null && val != null && String(val).length > max;
+      });
+      return champFautif
+        ? `Champ « ${champFautif} » trop long (max ${limits[champFautif]} caractères).`
+        : 'Une valeur est trop longue pour son champ.';
+    }
+    default:
+      return err.message;
+  }
+}
+
 // ==================== HELPER : LIRE EXCEL DEPUIS BUFFER ====================
 async function bufferToRows(buffer) {
   const workbook = new ExcelJS.Workbook();
@@ -132,28 +183,39 @@ async function importExcel(req, res) {
       const chunk     = validPairs.slice(c, c + CHUNK_SIZE);
       const chunkRows = chunk.map(p => p.row);
 
+      // Le SAVEPOINT doit être posé AVANT la tentative en lot : si insertChunk() échoue,
+      // Postgres met la transaction en état "aborted" et rejette toute commande suivante
+      // (y compris un SAVEPOINT) avec l'erreur générique "current transaction is aborted,
+      // commands ignored until end of transaction block" — ce qui masquait l'erreur réelle
+      // et faisait échouer TOUT l'import (voir ROLLBACK dans le catch englobant plus bas)
+      // au lieu de basculer proprement en insertion ligne par ligne.
+      await client.query('SAVEPOINT chunk_attempt');
       try {
         await insertChunk(client, chunkRows, formulaireType, config);
         inserted += chunk.length;
+        await client.query('RELEASE SAVEPOINT chunk_attempt');
       } catch (chunkErr) {
-        // Un conflit ou une contrainte DB dans le lot → bascule ligne par ligne
+        // Un conflit ou une contrainte DB dans le lot → on revient à un état valide, puis
+        // on bascule ligne par ligne pour isoler la ou les lignes fautives.
         console.warn(
           `⚠️ Lot [lignes ${chunk[0].line}–${chunk[chunk.length - 1].line}] échoué ` +
           `(${chunkErr.message}), bascule en insertion individuelle`
         );
-        // Annuler uniquement le lot en cours, pas toute la transaction
-        await client.query('SAVEPOINT chunk_fallback');
+        await client.query('ROLLBACK TO SAVEPOINT chunk_attempt');
+        await client.query('RELEASE SAVEPOINT chunk_attempt');
+
         for (const { row, line } of chunk) {
+          await client.query('SAVEPOINT row_attempt');
           try {
             await insertRow(client, row, formulaireType, config);
             inserted++;
+            await client.query('RELEASE SAVEPOINT row_attempt');
           } catch (rowErr) {
-            await client.query('ROLLBACK TO SAVEPOINT chunk_fallback');
-            await client.query('SAVEPOINT chunk_fallback');
+            await client.query('ROLLBACK TO SAVEPOINT row_attempt');
+            await client.query('RELEASE SAVEPOINT row_attempt');
             errors.push({ ligne: line, erreur: rowErr.message });
           }
         }
-        await client.query('RELEASE SAVEPOINT chunk_fallback');
       }
     }
 
@@ -321,11 +383,16 @@ async function insertRow(client, row, formulaireType, config) {
   const itemValues       = Object.values(cleanedBase);
   const itemPlaceholders = itemValues.map((_, i) => `$${i + 1}`).join(', ');
 
-  const itemResult = await client.query(
-    `INSERT INTO tbl_items (${itemColumns}) VALUES (${itemPlaceholders}) RETURNING item_id`,
-    itemValues
-  );
-  const itemId = itemResult.rows[0].item_id;
+  let itemId;
+  try {
+    const itemResult = await client.query(
+      `INSERT INTO tbl_items (${itemColumns}) VALUES (${itemPlaceholders}) RETURNING item_id`,
+      itemValues
+    );
+    itemId = itemResult.rows[0].item_id;
+  } catch (err) {
+    throw new Error(await messageErreurClair(err, cleanedBase, 'tbl_items'));
+  }
 
   const specificData = config.buildSpecificData(row);
   const cleanedSpec  = cleanEmptyFields(specificData);
@@ -339,10 +406,14 @@ async function insertRow(client, row, formulaireType, config) {
       .map(key => `${key} = EXCLUDED.${key}`)
       .join(', ');
 
-    await client.query(
-      `INSERT INTO ${tableName} (${columns}) VALUES (${holders}) ON CONFLICT (item_id) DO UPDATE SET ${updateSet}`,
-      values
-    );
+    try {
+      await client.query(
+        `INSERT INTO ${tableName} (${columns}) VALUES (${holders}) ON CONFLICT (item_id) DO UPDATE SET ${updateSet}`,
+        values
+      );
+    } catch (err) {
+      throw new Error(await messageErreurClair(err, cleanedSpec, tableName));
+    }
   }
 }
 
