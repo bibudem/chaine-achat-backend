@@ -8,6 +8,7 @@
      fichier_nom     VARCHAR(255),
      nb_total        INTEGER         NOT NULL DEFAULT 0,
      nb_inseres      INTEGER         NOT NULL DEFAULT 0,
+     nb_maj          INTEGER         NOT NULL DEFAULT 0,
      nb_erreurs      INTEGER         NOT NULL DEFAULT 0,
      details_erreurs JSONB,
      utilisateur     VARCHAR(255),
@@ -15,23 +16,27 @@
    );
    CREATE INDEX IF NOT EXISTS idx_import_logs_date ON tbl_import_logs (date_import DESC);
    CREATE INDEX IF NOT EXISTS idx_import_logs_type ON tbl_import_logs (formulaire_type);
+
+   -- Voir sql/ajouter_nb_maj_import_logs.sql : nb_maj distingue les items mis à jour
+   -- (déduplication titre+ISBN) des vraies créations (nb_inseres).
    ────────────────────────────────────────────────────────────────────── */
 
 const pool = require('../config/postgres.config');
 
 const ImportLogsModel = {
 
-  async create({ formulaire_type, fichier_nom, nb_total, nb_inseres, nb_erreurs, details_erreurs, utilisateur, statut }) {
+  async create({ formulaire_type, fichier_nom, nb_total, nb_inseres, nb_maj, nb_erreurs, details_erreurs, utilisateur, statut }) {
     const { rows } = await pool.query(
       `INSERT INTO tbl_import_logs
-         (formulaire_type, fichier_nom, nb_total, nb_inseres, nb_erreurs, details_erreurs, utilisateur, statut)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (formulaire_type, fichier_nom, nb_total, nb_inseres, nb_maj, nb_erreurs, details_erreurs, utilisateur, statut)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         formulaire_type,
         fichier_nom,
         nb_total        ?? 0,
         nb_inseres      ?? 0,
+        nb_maj          ?? 0,
         nb_erreurs      ?? 0,
         JSON.stringify(details_erreurs ?? []),
         utilisateur     || 'Inconnu',
@@ -72,7 +77,7 @@ const ImportLogsModel = {
     const [dataRes, countRes] = await Promise.all([
       pool.query(
         `SELECT log_id, date_import, formulaire_type, fichier_nom,
-                nb_total, nb_inseres, nb_erreurs, utilisateur, statut
+                nb_total, nb_inseres, nb_maj, nb_erreurs, utilisateur, statut
            FROM tbl_import_logs
            ${where}
            ORDER BY date_import DESC

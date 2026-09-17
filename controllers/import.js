@@ -180,8 +180,8 @@ async function importExcel(req, res) {
     // échouer les autres lignes ni toute la transaction.
     await client.query('BEGIN');
 
-    let inserted = 0; // lignes traitées avec succès (créées OU mises à jour)
-    let updated  = 0; // parmi celles-ci, celles qui ont mis à jour un item existant
+    let nouveaux = 0; // vraies créations
+    let maj      = 0; // items existants mis à jour (déduplication titre+ISBN)
     const insertedItemIds = [];
 
     for (const { row, line } of validPairs) {
@@ -189,8 +189,7 @@ async function importExcel(req, res) {
       try {
         const result = await upsertRow(client, row, formulaireType, config);
         insertedItemIds.push(result.itemId);
-        inserted++;
-        if (result.updated) updated++;
+        if (result.updated) maj++; else nouveaux++;
         await client.query('RELEASE SAVEPOINT row_attempt');
       } catch (rowErr) {
         await client.query('ROLLBACK TO SAVEPOINT row_attempt');
@@ -201,13 +200,14 @@ async function importExcel(req, res) {
 
     await client.query('COMMIT');
 
+    const traites = nouveaux + maj;
     console.log(
-      `✅ Import terminé: ${inserted}/${rows.length} traitée(s) ` +
-      `(dont ${updated} mise(s) à jour), ${errors.length} erreur(s)`
+      `✅ Import terminé: ${nouveaux} créée(s), ${maj} mise(s) à jour ` +
+      `sur ${rows.length}, ${errors.length} erreur(s)`
     );
 
-    const statut = errors.length === 0  ? 'succès'
-                 : inserted     === 0   ? 'échec'
+    const statut = errors.length === 0 ? 'succès'
+                 : traites       === 0 ? 'échec'
                  : 'partiel';
 
     let logId = null;
@@ -216,7 +216,8 @@ async function importExcel(req, res) {
         formulaire_type: formulaireType,
         fichier_nom:     req.file.originalname,
         nb_total:        rows.length,
-        nb_inseres:      inserted,
+        nb_inseres:      nouveaux,
+        nb_maj:          maj,
         nb_erreurs:      errors.length,
         details_erreurs: errors,
         utilisateur:     req.body?.utilisateur || 'Inconnu',
@@ -240,12 +241,11 @@ async function importExcel(req, res) {
       }
     }
 
-    const nouveaux = inserted - updated;
     res.status(201).json({
       success:  true,
-      message:  `Import terminé: ${nouveaux} créée(s), ${updated} mise(s) à jour, sur ${rows.length}`,
-      inserted,
-      updated,
+      message:  `Import terminé: ${nouveaux} créée(s), ${maj} mise(s) à jour, sur ${rows.length}`,
+      inserted: nouveaux,
+      updated:  maj,
       total:    rows.length,
       errors,
       logId
