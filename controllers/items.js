@@ -271,6 +271,10 @@ const itemsController = {
       const formulaire_type  = (req.query.formulaire_type  || '').trim();
       const fonds_budgetaire = (req.query.fonds_budgetaire || '').trim();
       const priorite_demande = (req.query.priorite_demande || '').trim();
+      // Filtre "Voir les items importés" depuis le résultat/registre d'un import en lot
+      // (voir controllers/import.js, colonne tbl_items.import_log_id).
+      const importLogIdRaw = (req.query.import_log_id || '').trim();
+      const importLogId    = /^\d+$/.test(importLogIdRaw) ? parseInt(importLogIdRaw, 10) : null;
       // Profil TDM (front-end) : ne restituer que les items routés vers le TDM.
       const creationNoticeDtdm = req.query.creation_notice_dtdm;
       // Année de date_creation (ex. depuis le sélecteur du tableau de bord admin — voir
@@ -314,6 +318,10 @@ const itemsController = {
       if (priorite_demande) {
         params.push(priorite_demande);
         conditions.push(`priorite_demande = $${params.length}`);
+      }
+      if (importLogId) {
+        params.push(importLogId);
+        conditions.push(`import_log_id = $${params.length}`);
       }
       if (creationNoticeDtdm === 'true' || creationNoticeDtdm === 'false') {
         params.push(creationNoticeDtdm === 'true');

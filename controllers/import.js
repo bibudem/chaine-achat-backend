@@ -178,6 +178,7 @@ async function importExcel(req, res) {
     await client.query('BEGIN');
 
     let inserted = 0;
+    const insertedItemIds = [];
 
     for (let c = 0; c < validPairs.length; c += CHUNK_SIZE) {
       const chunk     = validPairs.slice(c, c + CHUNK_SIZE);
@@ -191,7 +192,8 @@ async function importExcel(req, res) {
       // au lieu de basculer proprement en insertion ligne par ligne.
       await client.query('SAVEPOINT chunk_attempt');
       try {
-        await insertChunk(client, chunkRows, formulaireType, config);
+        const chunkItemIds = await insertChunk(client, chunkRows, formulaireType, config);
+        insertedItemIds.push(...chunkItemIds);
         inserted += chunk.length;
         await client.query('RELEASE SAVEPOINT chunk_attempt');
       } catch (chunkErr) {
@@ -207,7 +209,8 @@ async function importExcel(req, res) {
         for (const { row, line } of chunk) {
           await client.query('SAVEPOINT row_attempt');
           try {
-            await insertRow(client, row, formulaireType, config);
+            const itemId = await insertRow(client, row, formulaireType, config);
+            insertedItemIds.push(itemId);
             inserted++;
             await client.query('RELEASE SAVEPOINT row_attempt');
           } catch (rowErr) {
@@ -227,8 +230,9 @@ async function importExcel(req, res) {
                  : inserted     === 0   ? 'échec'
                  : 'partiel';
 
+    let logId = null;
     try {
-      await ImportLogsModel.create({
+      const logRow = await ImportLogsModel.create({
         formulaire_type: formulaireType,
         fichier_nom:     req.file.originalname,
         nb_total:        rows.length,
@@ -238,8 +242,22 @@ async function importExcel(req, res) {
         utilisateur:     req.body?.utilisateur || 'Inconnu',
         statut
       });
+      logId = logRow?.log_id ?? null;
     } catch (logErr) {
       console.error('[import-log] impossible de sauvegarder le log:', logErr.message);
+    }
+
+    // Relie chaque item créé au log d'import — permet de filtrer /items par import
+    // (bouton "Voir les items importés"). Non bloquant : l'import a déjà été commité.
+    if (logId && insertedItemIds.length > 0) {
+      try {
+        await pool.query(
+          `UPDATE tbl_items SET import_log_id = $1 WHERE item_id = ANY($2)`,
+          [logId, insertedItemIds]
+        );
+      } catch (linkErr) {
+        console.error('[import-log] impossible de lier les items importés au log:', linkErr.message);
+      }
     }
 
     res.status(201).json({
@@ -247,7 +265,8 @@ async function importExcel(req, res) {
       message:  `Import terminé: ${inserted} ligne(s) insérée(s) sur ${rows.length}`,
       inserted,
       total:    rows.length,
-      errors
+      errors,
+      logId
     });
 
   } catch (error) {
@@ -353,7 +372,7 @@ async function insertChunk(client, rows, formulaireType, config) {
 
   // ── Table spécifique ──────────────────────────────────────────────
   const SPEC_COLUMNS = Object.keys(config.buildSpecificData({}));
-  if (SPEC_COLUMNS.length === 0) return;
+  if (SPEC_COLUMNS.length === 0) return itemIds;
 
   const ALL_COLS  = ['item_id', ...SPEC_COLUMNS];
   const specValues = [];
@@ -372,6 +391,8 @@ async function insertChunk(client, rows, formulaireType, config) {
     `INSERT INTO ${tableName} (${ALL_COLS.join(', ')}) VALUES ${specPlaceholders} ON CONFLICT (item_id) DO UPDATE SET ${updateSet}`,
     specValues
   );
+
+  return itemIds;
 }
 
 // ==================== HELPER : INSÉRER UNE LIGNE (fallback) ====================
@@ -415,6 +436,8 @@ async function insertRow(client, row, formulaireType, config) {
       throw new Error(await messageErreurClair(err, cleanedSpec, tableName));
     }
   }
+
+  return itemId;
 }
 
 // ==================== HELPER : DONNÉES DE BASE (tbl_items) ====================
