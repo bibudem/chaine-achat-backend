@@ -5,8 +5,6 @@ const { publicError } = require('../util/errors');
 
 console.log('🎯 Chargement du contrôleur import...');
 
-const CHUNK_SIZE = 500;
-
 // ==================== MAPPING TYPE → TABLE ====================
 const TYPE_TABLE_MAP = {
   'Modification et CCOL':       'tbl_modification_ccol',
@@ -174,57 +172,39 @@ async function importExcel(req, res) {
       });
     }
 
-    // ── Phase 2 : insertions en lots dans une transaction ─────────────────────
+    // ── Phase 2 : upsert ligne par ligne dans une transaction ─────────────────
+    // Chaque ligne est traitée individuellement (voir upsertRow) car la déduplication
+    // (même formulaire_type + titre + ISBN → mise à jour au lieu d'un doublon) nécessite une
+    // recherche préalable par ligne, incompatible avec un INSERT multi-valeurs en un seul lot.
+    // Le SAVEPOINT par ligne isole une éventuelle erreur (ex. champ trop long) sans faire
+    // échouer les autres lignes ni toute la transaction.
     await client.query('BEGIN');
 
-    let inserted = 0;
+    let inserted = 0; // lignes traitées avec succès (créées OU mises à jour)
+    let updated  = 0; // parmi celles-ci, celles qui ont mis à jour un item existant
     const insertedItemIds = [];
 
-    for (let c = 0; c < validPairs.length; c += CHUNK_SIZE) {
-      const chunk     = validPairs.slice(c, c + CHUNK_SIZE);
-      const chunkRows = chunk.map(p => p.row);
-
-      // Le SAVEPOINT doit être posé AVANT la tentative en lot : si insertChunk() échoue,
-      // Postgres met la transaction en état "aborted" et rejette toute commande suivante
-      // (y compris un SAVEPOINT) avec l'erreur générique "current transaction is aborted,
-      // commands ignored until end of transaction block" — ce qui masquait l'erreur réelle
-      // et faisait échouer TOUT l'import (voir ROLLBACK dans le catch englobant plus bas)
-      // au lieu de basculer proprement en insertion ligne par ligne.
-      await client.query('SAVEPOINT chunk_attempt');
+    for (const { row, line } of validPairs) {
+      await client.query('SAVEPOINT row_attempt');
       try {
-        const chunkItemIds = await insertChunk(client, chunkRows, formulaireType, config);
-        insertedItemIds.push(...chunkItemIds);
-        inserted += chunk.length;
-        await client.query('RELEASE SAVEPOINT chunk_attempt');
-      } catch (chunkErr) {
-        // Un conflit ou une contrainte DB dans le lot → on revient à un état valide, puis
-        // on bascule ligne par ligne pour isoler la ou les lignes fautives.
-        console.warn(
-          `⚠️ Lot [lignes ${chunk[0].line}–${chunk[chunk.length - 1].line}] échoué ` +
-          `(${chunkErr.message}), bascule en insertion individuelle`
-        );
-        await client.query('ROLLBACK TO SAVEPOINT chunk_attempt');
-        await client.query('RELEASE SAVEPOINT chunk_attempt');
-
-        for (const { row, line } of chunk) {
-          await client.query('SAVEPOINT row_attempt');
-          try {
-            const itemId = await insertRow(client, row, formulaireType, config);
-            insertedItemIds.push(itemId);
-            inserted++;
-            await client.query('RELEASE SAVEPOINT row_attempt');
-          } catch (rowErr) {
-            await client.query('ROLLBACK TO SAVEPOINT row_attempt');
-            await client.query('RELEASE SAVEPOINT row_attempt');
-            errors.push({ ligne: line, erreur: rowErr.message });
-          }
-        }
+        const result = await upsertRow(client, row, formulaireType, config);
+        insertedItemIds.push(result.itemId);
+        inserted++;
+        if (result.updated) updated++;
+        await client.query('RELEASE SAVEPOINT row_attempt');
+      } catch (rowErr) {
+        await client.query('ROLLBACK TO SAVEPOINT row_attempt');
+        await client.query('RELEASE SAVEPOINT row_attempt');
+        errors.push({ ligne: line, erreur: rowErr.message });
       }
     }
 
     await client.query('COMMIT');
 
-    console.log(`✅ Import terminé: ${inserted}/${rows.length} insérée(s), ${errors.length} erreur(s)`);
+    console.log(
+      `✅ Import terminé: ${inserted}/${rows.length} traitée(s) ` +
+      `(dont ${updated} mise(s) à jour), ${errors.length} erreur(s)`
+    );
 
     const statut = errors.length === 0  ? 'succès'
                  : inserted     === 0   ? 'échec'
@@ -247,8 +227,8 @@ async function importExcel(req, res) {
       console.error('[import-log] impossible de sauvegarder le log:', logErr.message);
     }
 
-    // Relie chaque item créé au log d'import — permet de filtrer /items par import
-    // (bouton "Voir les items importés"). Non bloquant : l'import a déjà été commité.
+    // Relie chaque item créé/mis à jour au log d'import — permet de filtrer /items par
+    // import (bouton "Voir les items importés"). Non bloquant : l'import a déjà été commité.
     if (logId && insertedItemIds.length > 0) {
       try {
         await pool.query(
@@ -260,10 +240,12 @@ async function importExcel(req, res) {
       }
     }
 
+    const nouveaux = inserted - updated;
     res.status(201).json({
       success:  true,
-      message:  `Import terminé: ${inserted} ligne(s) insérée(s) sur ${rows.length}`,
+      message:  `Import terminé: ${nouveaux} créée(s), ${updated} mise(s) à jour, sur ${rows.length}`,
       inserted,
+      updated,
       total:    rows.length,
       errors,
       logId
@@ -344,75 +326,68 @@ function validateRow(row, config, lineNumber) {
   return { ligne: lineNumber, erreur: `Champs obligatoires manquants: ${missing.join(', ')}` };
 }
 
-// ==================== HELPER : INSÉRER UN LOT ====================
-// Construit un INSERT multi-valeurs pour tbl_items (RETURNING item_id),
-// puis un INSERT multi-valeurs pour la table spécifique — 2 requêtes pour N lignes.
-async function insertChunk(client, rows, formulaireType, config) {
-  if (rows.length === 0) return;
-
-  const tableName = TYPE_TABLE_MAP[formulaireType];
-
-  // ── tbl_items ─────────────────────────────────────────────────────
-  // La liste de colonnes est fixe pour tous les types (même structure buildBaseData)
-  const BASE_COLUMNS = Object.keys(buildBaseData({}, formulaireType));
-  const itemValues   = [];
-
-  const itemPlaceholders = rows.map((row, rowIdx) => {
-    const base   = buildBaseData(row, formulaireType);
-    const offset = rowIdx * BASE_COLUMNS.length;
-    BASE_COLUMNS.forEach(col => itemValues.push(normalizeValue(base[col])));
-    return `(${BASE_COLUMNS.map((_, i) => `$${offset + i + 1}`).join(', ')})`;
-  }).join(', ');
-
-  const itemResult = await client.query(
-    `INSERT INTO tbl_items (${BASE_COLUMNS.join(', ')}) VALUES ${itemPlaceholders} RETURNING item_id`,
-    itemValues
+// ==================== HELPER : TROUVER UN ITEM EXISTANT (déduplication import) ====================
+// Un import répété du même fichier (ou une ligne déjà importée précédemment) créait un
+// doublon à chaque exécution. On recherche maintenant un item existant du MÊME type de
+// formulaire, même titre et même ISBN/ISSN (comparaison insensible à la casse/aux espaces) —
+// s'il existe, upsertRow() le MET À JOUR au lieu d'en créer un nouveau. Le type de formulaire
+// fait partie du critère pour éviter qu'un même titre/ISBN utilisé pour une demande d'un
+// AUTRE type (ex. abonnement vs achat unique) ne vienne écraser une fiche sans rapport.
+async function findExistingItemId(client, formulaireType, titre_document, isbn_issn) {
+  if (!titre_document || !isbn_issn) return null; // pas assez d'info pour matcher en confiance
+  const { rows } = await client.query(
+    `SELECT item_id FROM tbl_items
+     WHERE formulaire_type = $1
+       AND lower(trim(titre_document)) = lower(trim($2))
+       AND lower(trim(isbn_issn))      = lower(trim($3))
+     LIMIT 1`,
+    [formulaireType, titre_document, isbn_issn]
   );
-  const itemIds = itemResult.rows.map(r => r.item_id);
-
-  // ── Table spécifique ──────────────────────────────────────────────
-  const SPEC_COLUMNS = Object.keys(config.buildSpecificData({}));
-  if (SPEC_COLUMNS.length === 0) return itemIds;
-
-  const ALL_COLS  = ['item_id', ...SPEC_COLUMNS];
-  const specValues = [];
-
-  const specPlaceholders = rows.map((row, rowIdx) => {
-    const spec   = config.buildSpecificData(row);
-    const offset = rowIdx * ALL_COLS.length;
-    specValues.push(itemIds[rowIdx]);
-    SPEC_COLUMNS.forEach(col => specValues.push(normalizeValue(spec[col])));
-    return `(${ALL_COLS.map((_, i) => `$${offset + i + 1}`).join(', ')})`;
-  }).join(', ');
-
-  const updateSet = SPEC_COLUMNS.map(col => `${col} = EXCLUDED.${col}`).join(', ');
-
-  await client.query(
-    `INSERT INTO ${tableName} (${ALL_COLS.join(', ')}) VALUES ${specPlaceholders} ON CONFLICT (item_id) DO UPDATE SET ${updateSet}`,
-    specValues
-  );
-
-  return itemIds;
+  return rows[0]?.item_id ?? null;
 }
 
-// ==================== HELPER : INSÉRER UNE LIGNE (fallback) ====================
-async function insertRow(client, row, formulaireType, config) {
+// ==================== HELPER : INSÉRER OU METTRE À JOUR UNE LIGNE ====================
+// Retourne { itemId, updated } — updated=true si une ligne existante (même formulaire_type +
+// titre + ISBN/ISSN, voir findExistingItemId) a été mise à jour plutôt que dupliquée.
+// Ne met à jour que les champs présents dans la ligne importée (cleanEmptyFields) : une
+// cellule vide dans le fichier ne vient pas effacer une valeur déjà en base.
+async function upsertRow(client, row, formulaireType, config) {
   const baseData    = buildBaseData(row, formulaireType);
   const cleanedBase = cleanEmptyFields(baseData);
 
-  const itemColumns      = Object.keys(cleanedBase).join(', ');
-  const itemValues       = Object.values(cleanedBase);
-  const itemPlaceholders = itemValues.map((_, i) => `$${i + 1}`).join(', ');
+  const existingId = await findExistingItemId(
+    client, formulaireType, baseData.titre_document, baseData.isbn_issn
+  );
 
   let itemId;
-  try {
-    const itemResult = await client.query(
-      `INSERT INTO tbl_items (${itemColumns}) VALUES (${itemPlaceholders}) RETURNING item_id`,
-      itemValues
-    );
-    itemId = itemResult.rows[0].item_id;
-  } catch (err) {
-    throw new Error(await messageErreurClair(err, cleanedBase, 'tbl_items'));
+  if (existingId) {
+    const columns    = Object.keys(cleanedBase);
+    const values     = columns.map(col => cleanedBase[col]);
+    const setClauses = columns.map((col, i) => `${col} = $${i + 2}`).join(', ');
+
+    try {
+      await client.query(
+        `UPDATE tbl_items SET ${setClauses}, date_modification = CURRENT_TIMESTAMP WHERE item_id = $1`,
+        [existingId, ...values]
+      );
+    } catch (err) {
+      throw new Error(await messageErreurClair(err, cleanedBase, 'tbl_items'));
+    }
+    itemId = existingId;
+  } else {
+    const itemColumns      = Object.keys(cleanedBase).join(', ');
+    const itemValues       = Object.values(cleanedBase);
+    const itemPlaceholders = itemValues.map((_, i) => `$${i + 1}`).join(', ');
+
+    try {
+      const itemResult = await client.query(
+        `INSERT INTO tbl_items (${itemColumns}) VALUES (${itemPlaceholders}) RETURNING item_id`,
+        itemValues
+      );
+      itemId = itemResult.rows[0].item_id;
+    } catch (err) {
+      throw new Error(await messageErreurClair(err, cleanedBase, 'tbl_items'));
+    }
   }
 
   const specificData = config.buildSpecificData(row);
@@ -437,7 +412,7 @@ async function insertRow(client, row, formulaireType, config) {
     }
   }
 
-  return itemId;
+  return { itemId, updated: !!existingId };
 }
 
 // ==================== HELPER : DONNÉES DE BASE (tbl_items) ====================
@@ -476,15 +451,7 @@ function buildBaseData(row, formulaireType) {
   };
 }
 
-// ==================== HELPER : NORMALISER UNE VALEUR POUR INSERT EN LOT ====================
-// Contrairement à cleanEmptyFields, on garde les null explicitement (liste de colonnes fixe).
-function normalizeValue(v) {
-  if (v === undefined || v === '') return null;
-  if (typeof v === 'string')       return v.trim() || null;
-  return v;
-}
-
-// ==================== HELPER : NETTOYER LES CHAMPS VIDES (fallback individuel) ====================
+// ==================== HELPER : NETTOYER LES CHAMPS VIDES ====================
 function cleanEmptyFields(obj) {
   return Object.fromEntries(
     Object.entries(obj)
