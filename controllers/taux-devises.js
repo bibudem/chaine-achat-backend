@@ -19,6 +19,17 @@ exports.getAll = async (req, res) => {
   }
 };
 
+/* GET /taux-devises/actuelle — période en vigueur aujourd'hui (ignore une période planifiée
+   pour une date future — voir Configuration > Taux de change) */
+exports.getActuelle = async (req, res) => {
+  try {
+    const row = await TauxDevisesModel.getActuelle();
+    sendSuccess(res, row, row ? 'Période actuelle chargée' : 'Aucune période en vigueur');
+  } catch (err) {
+    sendError(res, err, 'getActuelle');
+  }
+};
+
 /* POST /taux-devises — nouvelle période */
 exports.creerPeriode = async (req, res) => {
   try {

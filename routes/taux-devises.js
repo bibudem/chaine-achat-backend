@@ -3,6 +3,7 @@ const router                = express.Router();
 const tauxDevisesController = require('../controllers/taux-devises');
 
 router.get('/',                       tauxDevisesController.getAll);
+router.get('/actuelle',               tauxDevisesController.getActuelle);
 router.post('/',                      tauxDevisesController.creerPeriode);
 router.put('/:id',                    tauxDevisesController.modifierPeriode);
 router.put('/:id/devises/:devise',    tauxDevisesController.upsertTauxDevise);

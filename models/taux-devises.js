@@ -13,6 +13,19 @@ const getAll = async () => {
   return res.rows;
 };
 
+/* ── Période actuellement en vigueur (date_debut <= maintenant), la plus récente si plusieurs
+   qualifient — permet d'ignorer une période planifiée pour une date future (voir
+   Configuration > Taux de change) tant que sa date de début n'est pas encore arrivée. ── */
+const getActuelle = async () => {
+  const res = await pool.query(
+    `SELECT * FROM public.tbl_taux_devises_historique
+     WHERE date_debut <= NOW()
+     ORDER BY date_debut DESC, id DESC
+     LIMIT 1`
+  );
+  return res.rows[0] ?? null;
+};
+
 /* ── Nouvelle période (ligne) ── */
 const creerPeriode = async (periode, date_debut, taux = {}, note = null, cree_par = null) => {
   const res = await pool.query(
@@ -80,6 +93,7 @@ const supprimerPeriode = async (id) => {
 
 module.exports = {
   getAll,
+  getActuelle,
   creerPeriode,
   modifierPeriode,
   upsertTauxDevise,
