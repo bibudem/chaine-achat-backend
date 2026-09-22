@@ -10,8 +10,7 @@
 /.env
 /logs/
 /config/config.dev.js
-
-
+/config/config.prod.js
 
 # IDEs and editors
 /.idea

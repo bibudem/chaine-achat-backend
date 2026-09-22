@@ -17,11 +17,15 @@ async function handleCallback(req, res) {
     const tokens   = await auth.exchangeCode(code);
     const userInfo = auth.parseIdToken(tokens.id_token);
 
+    // Toute personne authentifiée via Azure AD est Admin pour l'instant
+    // (pas encore de rôles distincts — voir middleware/jwt.middleware.js)
     const token = auth.signToken({
-      sub:   userInfo.oid || userInfo.sub,
-      email: userInfo.preferred_username || userInfo.email || '',
-      name:  userInfo.name || '',
-      roles: userInfo.roles || [],
+      sub:    userInfo.oid || userInfo.sub,
+      email:  userInfo.preferred_username || userInfo.email || '',
+      nom:    userInfo.family_name || '',
+      prenom: userInfo.given_name || '',
+      groupe: 'Gestionnaire',
+      role:   'Admin',
     });
 
     res.redirect(`${config.urls.frontend}/auth-callback?token=${encodeURIComponent(token)}`);

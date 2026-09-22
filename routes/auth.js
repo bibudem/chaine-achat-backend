@@ -1,9 +1,10 @@
-const express  = require('express');
-const router   = express.Router();
-const crypto   = require('crypto');
-const auth     = require('../auth/auth');
-const callback = require('../auth/callback');
-const config   = require('../config/config');
+const express     = require('express');
+const router      = express.Router();
+const crypto      = require('crypto');
+const auth        = require('../auth/auth');
+const callback    = require('../auth/callback');
+const config      = require('../config/config');
+const { requireAuth } = require('../middleware/jwt.middleware');
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ROUTES AUTHENTIFICATION AZURE AD
@@ -25,6 +26,12 @@ router.get('/logout', (_req, res) => {
   res.redirect(url);
 });
 
+// GET /auth/me → infos de l'usager connecté (nom, prénom, courriel, groupe, rôle), à partir du JWT
+router.get('/me', requireAuth, (req, res) => {
+  const { sub, email, nom, prenom, groupe, role } = req.user;
+  res.json({ success: true, data: { sub, email, nom, prenom, groupe, role } });
+});
+
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    SIMULATION LOCALE (dev uniquement)
    GET /auth/dev-login?role=admin|acq|usager
@@ -32,9 +39,9 @@ router.get('/logout', (_req, res) => {
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 if (process.env.NODE_ENV !== 'production') {
   const DEV_PROFILES = {
-    admin:    { sub: 'dev-admin-001',  email: 'admin@udem.dev',  name: 'Admin Dev',          roles: ['admin'] },
-    acq:      { sub: 'dev-acq-001',    email: 'acq@udem.dev',    name: 'Bibliothécaire ACQ',  roles: ['acq'] },
-    usager:   { sub: 'dev-usager-001', email: 'usager@udem.dev', name: 'Usager Test',         roles: ['usager'] },
+    admin:  { sub: 'dev-admin-001',  email: 'admin@udem.dev',  nom: 'Admin',       prenom: 'Système', groupe: 'Gestionnaire', role: 'Admin' },
+    acq:    { sub: 'dev-acq-001',    email: 'acq@udem.dev',    nom: 'TDM',         prenom: 'Agent',   groupe: 'TDM',          role: 'TDM' },
+    usager: { sub: 'dev-usager-001', email: 'usager@udem.dev', nom: 'Bibliothèques', prenom: 'Test',  groupe: 'Usager',       role: 'Usager' },
   };
 
   router.get('/dev-login', (req, res) => {
