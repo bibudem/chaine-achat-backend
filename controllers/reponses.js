@@ -1,18 +1,17 @@
 const ReponsesModel = require('../models/reponses');
 const axios         = require('axios');
 const { publicError } = require('../util/errors');
+const config         = require('../config/config');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:4200';
 
-const PROD_BASE = 'https://ordo.bib.umontreal.ca/webhook';
-
-const N8N_SUGGESTION_URL          = process.env.N8N_SUGGESTION_URL          || `${PROD_BASE}/suggestion`;
-const N8N_NOUVEL_ACHAT_URL        = process.env.N8N_NOUVEL_ACHAT_URL        || `${PROD_BASE}/nouvel-achat`;
-const N8N_NOUVEL_ABONNEMENT_URL   = process.env.N8N_NOUVEL_ABONNEMENT_URL   || `${PROD_BASE}/nouvel-abonnement`;
-const N8N_MODIFICATION_CCOL_URL   = process.env.N8N_MODIFICATION_CCOL_URL   || `${PROD_BASE}/modification-ccol`;
-const N8N_PEB_TIPASA_URL          = process.env.N8N_PEB_TIPASA_URL          || `${PROD_BASE}/peb-tipasa`;
-const N8N_REQUETE_ACQ_URL         = process.env.N8N_REQUETE_ACQ_URL         || `${PROD_BASE}/requete-accessibilite`;
-const N8N_SPRINGER_URL            = process.env.N8N_SPRINGER_URL            || `${PROD_BASE}/springer`;
+const N8N_SUGGESTION_URL          = config.n8n.suggestionUrl;
+const N8N_NOUVEL_ACHAT_URL        = config.n8n.nouvelAchatUrl;
+const N8N_NOUVEL_ABONNEMENT_URL   = config.n8n.nouvelAbonnementUrl;
+const N8N_MODIFICATION_CCOL_URL   = config.n8n.modificationCcolUrl;
+const N8N_PEB_TIPASA_URL          = config.n8n.pebTipasaUrl;
+const N8N_REQUETE_ACQ_URL         = config.n8n.requeteAcqUrl;
+const N8N_SPRINGER_URL            = config.n8n.springerUrl;
 
 function redirect(res, url) {
   const decodedUrl = decodeURIComponent(url);

@@ -9,6 +9,8 @@
 /node_modules/
 /.env
 /logs/
+/config/config.dev.js
+
 
 
 # IDEs and editors
