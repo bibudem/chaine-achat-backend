@@ -35,7 +35,8 @@ module.exports = {
     secret: process.env.JWT_SECRET || 'dev-secret-changez-en-prod',
   },
   urls: {
-    frontend: envConfig.urls?.frontend || 'http://localhost:4200',
+    // Slash(s) final retiré : évite les doubles slashes dans les redirections (.../auth-callback)
+    frontend: (envConfig.urls?.frontend || 'http://localhost:4200').replace(/\/+$/, ''),
   },
   proxy: {
     host: process.env.PROXY_HOST || '',

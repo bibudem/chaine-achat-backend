@@ -19,9 +19,11 @@ router.get('/login', (_req, res) => {
 // GET /auth/callback → reçoit le code d'Azure AD, échange pour un JWT
 router.get('/callback', callback.handleCallback);
 
-// GET /auth/logout → déconnexion Azure AD + retour frontend
+// GET /auth/logout → déconnexion Azure AD + retour frontend sur /login
+// Important : https://.../login doit être enregistré dans les Redirect URIs de l'app
+// registration Azure AD (en plus de la racine), sinon Microsoft refuse la redirection.
 router.get('/logout', (_req, res) => {
-  const post = encodeURIComponent(config.urls.frontend);
+  const post = encodeURIComponent(`${config.urls.frontend}/login`);
   const url  = `https://login.microsoftonline.com/${config.azure.tenantId}/oauth2/v2.0/logout?post_logout_redirect_uri=${post}`;
   res.redirect(url);
 });
