@@ -1,5 +1,6 @@
 const auth   = require('./auth');
 const config = require('../config/config');
+const { resolveRole, groupeForRole } = require('./roles');
 
 async function handleCallback(req, res) {
   const { code, error, error_description } = req.query;
@@ -17,15 +18,16 @@ async function handleCallback(req, res) {
     const tokens   = await auth.exchangeCode(code);
     const userInfo = auth.parseIdToken(tokens.id_token);
 
-    // Toute personne authentifiée via Azure AD est Admin pour l'instant
-    // (pas encore de rôles distincts — voir middleware/jwt.middleware.js)
+    // Rôle déterminé à partir des App Roles Azure AD (SPS-ADMIN/DCOL-RES/BIB-USAGERS*)
+    // — voir auth/roles.js.
+    const role = resolveRole(userInfo);
     const token = auth.signToken({
       sub:    userInfo.oid || userInfo.sub,
       email:  userInfo.preferred_username || userInfo.email || '',
       nom:    userInfo.family_name || '',
       prenom: userInfo.given_name || '',
-      groupe: 'Gestionnaire',
-      role:   'Admin',
+      groupe: groupeForRole(role),
+      role,
       // TEMPORAIRE — debug, à retirer : toutes les claims brutes du ID token Azure AD
       azureRaw: userInfo,
     });
