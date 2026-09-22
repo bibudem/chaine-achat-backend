@@ -26,6 +26,8 @@ async function handleCallback(req, res) {
       prenom: userInfo.given_name || '',
       groupe: 'Gestionnaire',
       role:   'Admin',
+      // TEMPORAIRE — debug, à retirer : toutes les claims brutes du ID token Azure AD
+      azureRaw: userInfo,
     });
 
     res.redirect(`${config.urls.frontend}/auth-callback?token=${encodeURIComponent(token)}`);
