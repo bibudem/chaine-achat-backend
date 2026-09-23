@@ -1,11 +1,8 @@
-// Mappage des App Roles Azure AD (Enterprise application → App roles) vers les rôles
-// de l'application (Admin / TDM / Usager — vocabulaire attendu par le frontend Angular).
-const ROLE_BY_AZURE_VALUE = {
-  'SPS-ADMIN':              'Admin',
-  'DCOL-RES':               'TDM',
-  'BIB-USAGERS':            'Usager',
-  'BIB-USAGERS-SURVIVANTS': 'Usager',
-};
+// Azure AD (App Role BIB-USAGERS/BIB-USAGERS-SURVIVANTS) sert de porte d'entrée :
+// confirme que la personne fait partie du personnel/usagers des bibliothèques.
+// Le rôle exact (Admin/TDM/Usager) est géré dans tbl_utilisateurs (base locale),
+// indépendamment d'Azure — voir models/utilisateurs.js et auth/callback.js.
+const GROUPES_BIB_USAGER = ['BIB-USAGERS', 'BIB-USAGERS-SURVIVANTS'];
 
 // Libellé affiché côté frontend (sessionStorage groupeAdmin) pour chaque rôle.
 const GROUPE_BY_ROLE = {
@@ -14,42 +11,20 @@ const GROUPE_BY_ROLE = {
   Usager: 'Usager',
 };
 
-// Accès Admin garanti, indépendamment des App Roles assignés dans Azure AD.
-const ADMIN_OVERRIDE_EMAILS = [
-  'natalia.jabinschi@umontreal.ca',
-  'mathieu.nicolas.tardif@umontreal.ca',
-];
-
 /**
- * Rôle le plus élevé parmi les App Roles Azure AD assignés à l'usager
- * (SPS-ADMIN > DCOL-RES > BIB-*). Un usager assigné à PLUSIEURS groupes/rôles
- * à la fois (ex. BIB-USAGERS + SPS-ADMIN) garde le rôle le plus élevé — cette
- * fonction cherche SPS-ADMIN n'importe où dans la liste, pas seulement en premier.
+ * Porte d'entrée de l'application : la personne doit être membre d'un des App
+ * Roles Azure AD ci-dessus. Insensible à la casse/espaces (évite qu'un simple
+ * écart de saisie dans Azure bloque silencieusement un accès légitime).
  */
-function resolveRole(userInfo) {
-  const email = (userInfo.preferred_username || userInfo.email || '').toLowerCase();
-  if (ADMIN_OVERRIDE_EMAILS.includes(email)) {
-    return 'Admin';
-  }
-
-  // Azure AD renvoie `roles` en tableau, mais en chaîne unique si un seul rôle
-  // est assigné selon le client OIDC — on normalise dans les deux cas, en
-  // ignorant casse et espaces (évite qu'un simple écart de saisie dans Azure
-  // fasse silencieusement retomber un Admin au niveau Usager).
+function isBibUsager(userInfo) {
   const raw = userInfo.roles;
   const azureRoles = (Array.isArray(raw) ? raw : raw ? [raw] : [])
     .map(r => String(r).trim().toUpperCase());
-
-  if (azureRoles.includes('SPS-ADMIN')) return 'Admin';
-  if (azureRoles.includes('DCOL-RES'))  return 'TDM';
-  if (azureRoles.includes('BIB-USAGERS') || azureRoles.includes('BIB-USAGERS-SURVIVANTS')) return 'Usager';
-
-  // Aucun App Role reconnu assigné : accès minimal par défaut.
-  return 'Usager';
+  return GROUPES_BIB_USAGER.some(g => azureRoles.includes(g));
 }
 
 function groupeForRole(role) {
   return GROUPE_BY_ROLE[role] || 'Usager';
 }
 
-module.exports = { resolveRole, groupeForRole, ROLE_BY_AZURE_VALUE };
+module.exports = { isBibUsager, groupeForRole };

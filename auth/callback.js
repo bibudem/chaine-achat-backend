@@ -1,6 +1,7 @@
-const auth   = require('./auth');
-const config = require('../config/config');
-const { resolveRole, groupeForRole } = require('./roles');
+const auth              = require('./auth');
+const config             = require('../config/config');
+const { isBibUsager, groupeForRole } = require('./roles');
+const UtilisateursModel  = require('../models/utilisateurs');
 
 async function handleCallback(req, res) {
   const { code, error, error_description } = req.query;
@@ -18,16 +19,29 @@ async function handleCallback(req, res) {
     const tokens   = await auth.exchangeCode(code);
     const userInfo = auth.parseIdToken(tokens.id_token);
 
-    // Rôle déterminé à partir des App Roles Azure AD (SPS-ADMIN/DCOL-RES/BIB-USAGERS*)
-    // — voir auth/roles.js.
-    const role = resolveRole(userInfo);
+    // Porte d'entrée : la personne doit être membre du groupe Azure AD bib-usagers
+    // (App Role), sinon elle n'a rien à faire dans cette application.
+    if (!isBibUsager(userInfo)) {
+      console.warn(`Accès refusé (hors bib-usagers): ${userInfo.preferred_username || userInfo.email}`);
+      return res.redirect(`${config.urls.frontend}/login?error=acces_non_autorise`);
+    }
+
+    const email  = userInfo.preferred_username || userInfo.email || '';
+    const nom    = userInfo.family_name || '';
+    const prenom = userInfo.given_name || '';
+
+    // Rôle applicatif (Admin/TDM/Usager) géré en base locale, pas par Azure AD —
+    // voir models/utilisateurs.js. Premier login = création avec rôle Usager par
+    // défaut ; un admin doit ensuite promouvoir la personne au besoin.
+    const utilisateur = await UtilisateursModel.upsertFromLogin({ email, nom, prenom });
+
     const token = auth.signToken({
       sub:    userInfo.oid || userInfo.sub,
-      email:  userInfo.preferred_username || userInfo.email || '',
-      nom:    userInfo.family_name || '',
-      prenom: userInfo.given_name || '',
-      groupe: groupeForRole(role),
-      role,
+      email,
+      nom,
+      prenom,
+      groupe: groupeForRole(utilisateur.role),
+      role:   utilisateur.role,
       // TEMPORAIRE — debug, à retirer : toutes les claims brutes du ID token Azure AD
       azureRaw: userInfo,
     });

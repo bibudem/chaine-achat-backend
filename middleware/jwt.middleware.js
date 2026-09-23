@@ -13,4 +13,14 @@ function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth };
+// À utiliser après requireAuth. Ex. : router.get('/', requireAuth, requireRole('Admin'), ctrl.list)
+function requireRole(...rolesAutorises) {
+  return (req, res, next) => {
+    if (!rolesAutorises.includes(req.user?.role)) {
+      return res.status(403).json({ success: false, error: 'Accès refusé' });
+    }
+    next();
+  };
+}
+
+module.exports = { requireAuth, requireRole };
