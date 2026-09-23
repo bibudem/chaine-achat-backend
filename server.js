@@ -171,7 +171,7 @@ if (process.env.NODE_ENV !== 'production') {
 // binary : sans ça, serverless-http renvoie TOUTES les réponses en texte UTF-8 — un
 // buffer binaire (PDF/Word/Excel, voir controllers/pieces-jointes.js et import.js)
 // se fait alors corrompre silencieusement en transitant par API Gateway.
-module.exports.handler = require('serverless-http')(app, {
+const serverlessHandler = require('serverless-http')(app, {
   binary: [
     'application/pdf',
     'application/vnd.*',       // .xlsx, .xls, .docx, .msg (vnd.ms-outlook)
@@ -180,3 +180,16 @@ module.exports.handler = require('serverless-http')(app, {
     'application/octet-stream',
   ],
 });
+
+module.exports.handler = async (event, context) => {
+  // TEMPORAIRE — debug upload pièces jointes en prod, à retirer une fois diagnostiqué
+  if (event.headers?.['content-type']?.includes('multipart/form-data')) {
+    console.log('[lambda-debug] version:', event.version,
+      '| isBase64Encoded:', event.isBase64Encoded,
+      '| content-type:', event.headers['content-type'],
+      '| content-length header:', event.headers['content-length'],
+      '| body type:', typeof event.body,
+      '| body length:', event.body?.length);
+  }
+  return serverlessHandler(event, context);
+};
