@@ -166,4 +166,15 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // Handler exporté pour AWS Lambda
-module.exports.handler = require('serverless-http')(app);
+// binary : sans ça, serverless-http renvoie TOUTES les réponses en texte UTF-8 — un
+// buffer binaire (PDF/Word/Excel, voir controllers/pieces-jointes.js et import.js)
+// se fait alors corrompre silencieusement en transitant par API Gateway.
+module.exports.handler = require('serverless-http')(app, {
+  binary: [
+    'application/pdf',
+    'application/vnd.*',       // .xlsx, .xls, .docx, .msg (vnd.ms-outlook)
+    'application/msword',      // .doc
+    'message/rfc822',          // .eml
+    'application/octet-stream',
+  ],
+});
