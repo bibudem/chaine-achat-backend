@@ -1,5 +1,6 @@
 const pool = require('../config/postgres.config');
 const PiecesJointesModel = require('../models/pieces-jointes');
+const ItemsFondsModel = require('../models/items-fonds');
 const { filterToTableColumns } = require('../util/db-columns');
 const { publicError } = require('../util/errors');
 
@@ -54,7 +55,12 @@ const itemsController = {
       const newItem = itemResult.rows[0];
       
       console.log(`✅ Item créé avec ID: ${newItem.item_id}`);
-      
+
+      // Répartition entre plusieurs fonds budgétaires, si fournie (fonds partagés) —
+      // fonds_repartition n'est pas une colonne de tbl_items, lue depuis fullBaseData
+      // (avant filtrage), pas safeBaseData.
+      await ItemsFondsModel.remplacerRepartition(client, newItem.item_id, fullBaseData.fonds_repartition);
+
       // 2. Insérer dans la table spécifique selon le type
       if (specificData && Object.keys(specificData).length > 0) {
         await insertSpecificData(client, newItem.item_id, formulaire_type, specificData);
@@ -115,11 +121,14 @@ const itemsController = {
       
       // 2. Récupérer les données spécifiques selon le type
       const specificData = await getSpecificData(client, itemId, item.formulaire_type);
-      
+
+      // 3. Répartition entre plusieurs fonds budgétaires, si l'item en a une (fonds partagés)
+      const fondsRepartition = await ItemsFondsModel.getRepartition(itemId);
+
       console.log('✅ Item récupéré avec succès');
       res.json({
         success: true,
-        data: { ...item, ...specificData }
+        data: { ...item, ...specificData, fonds_repartition: fondsRepartition }
       });
       
     } catch (error) {
@@ -187,7 +196,14 @@ const itemsController = {
       if (specificData && Object.keys(specificData).length > 0) {
         await updateSpecificData(client, itemId, formulaire_type, specificData);
       }
-      
+
+      // 3. Répartition entre plusieurs fonds budgétaires, si fournie (fonds partagés) —
+      // seulement si le champ est présent dans la requête, pour ne pas effacer une
+      // répartition existante lors d'une mise à jour partielle qui ne l'inclut pas.
+      if (Array.isArray(baseData.fonds_repartition)) {
+        await ItemsFondsModel.remplacerRepartition(client, itemId, baseData.fonds_repartition);
+      }
+
       await client.query('COMMIT');
       
       // 3. Récupérer l'item mis à jour

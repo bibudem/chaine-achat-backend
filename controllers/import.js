@@ -1,6 +1,7 @@
 const ExcelJS        = require('exceljs');
 const pool           = require('../config/postgres.config');
 const ImportLogsModel = require('../models/import-logs');
+const ItemsFondsModel = require('../models/items-fonds');
 const { publicError } = require('../util/errors');
 
 console.log('🎯 Chargement du contrôleur import...');
@@ -353,6 +354,15 @@ async function findExistingItemId(client, formulaireType, titre_document, isbn_i
 // cellule vide dans le fichier ne vient pas effacer une valeur déjà en base.
 async function upsertRow(client, row, formulaireType, config) {
   const baseData    = buildBaseData(row, formulaireType);
+
+  // Fonds partagés (Nouvel achat unique / Nouvel abonnement / Modification et CCOL
+  // uniquement, voir buildFondsRepartition) — remplace prix_cad par la somme des fonds
+  // quand un vrai partage est détecté dans la ligne (≥ 2 fonds valides).
+  const fondsRepartition = buildFondsRepartition(row);
+  if (fondsRepartition) {
+    baseData.prix_cad = fondsRepartition.reduce((s, l) => s + (Number(l.prix_cad) || 0), 0);
+  }
+
   const cleanedBase = cleanEmptyFields(baseData);
 
   const existingId = await findExistingItemId(
@@ -412,7 +422,77 @@ async function upsertRow(client, row, formulaireType, config) {
     }
   }
 
+  // Fonds partagés : ne fait rien si fondsRepartition est undefined (pas de partage détecté
+  // dans cette ligne) — voir ItemsFondsModel.remplacerRepartition.
+  await ItemsFondsModel.remplacerRepartition(client, itemId, fondsRepartition);
+
   return { itemId, updated: !!existingId };
+}
+
+// ==================== HELPER : RÉPARTITION FONDS PARTAGÉS ====================
+// Nouvel achat unique / Nouvel abonnement / Modification et CCOL uniquement (voir
+// sql/items_fonds.sql). Pas de colonnes séparées par fonds : les MÊMES colonnes
+// (fonds_budgetaire, prix_cad, devise_originale, prix_devise_originale, pourcentage)
+// portent plusieurs valeurs séparées par "; " (ou juste ";"), dans le même ordre pour
+// chaque colonne — ex. fonds_budgetaire = "PE-034;PE-028", prix_cad = "20;15". Une
+// cellule sans ";" reste une simple valeur unique (comportement à 1 fonds inchangé).
+// Un segment n'est retenu que si fonds_budgetaire/prix_cad/devise_originale/
+// prix_devise_originale sont TOUS renseignés à cette position ; pourcentage reste
+// purement informatif (comme dans les formulaires web — non bloquant). Ne renvoie un
+// tableau que s'il y a un vrai partage (≥ 2 segments valides au total), sinon
+// undefined, pour ne pas créer de ligne dans tbl_items_fonds quand un seul fonds
+// suffit (voir models/items-fonds.js : remplacerRepartition ne fait rien avec < 2
+// lignes).
+function decouperColonne(val) {
+  if (val == null || val === '') return [];
+  return String(val).split(';').map(s => s.trim()).filter(s => s !== '');
+}
+
+/** Premier segment d'une colonne pouvant contenir plusieurs valeurs séparées par ";" —
+ *  utilisé par buildBaseData pour ne garder que le fonds "représentatif" (le 1er) dans
+ *  les colonnes plates de tbl_items, qu'il y ait un partage ou non. */
+function premierSegment(val) {
+  const segments = decouperColonne(val);
+  return segments.length ? segments[0] : null;
+}
+
+function buildFondsRepartition(row) {
+  const fondsArr  = decouperColonne(row['fonds_budgetaire']);
+  const prixArr   = decouperColonne(row['prix_cad']);
+  const deviseArr = decouperColonne(row['devise_originale']);
+  const prixDevArr = decouperColonne(row['prix_devise_originale']);
+  const pctArr    = decouperColonne(row['pourcentage']);
+
+  const nbSegments = Math.max(fondsArr.length, prixArr.length, deviseArr.length, prixDevArr.length, pctArr.length);
+  if (nbSegments < 2) return undefined;
+
+  const lignes = [];
+  for (let i = 0; i < nbSegments; i++) {
+    const fonds_budgetaire      = fondsArr[i];
+    const prix_cad              = prixArr[i];
+    const devise_originale      = deviseArr[i];
+    const prix_devise_originale = prixDevArr[i];
+    if (!fonds_budgetaire || !prix_cad || !devise_originale || !prix_devise_originale) continue;
+    lignes.push({
+      fonds_budgetaire,
+      prix_cad:              parseFloat(prix_cad),
+      devise_originale,
+      prix_devise_originale: parseFloat(prix_devise_originale),
+      pourcentage:           pctArr[i] ? parseFloat(pctArr[i]) : null,
+    });
+  }
+  if (lignes.length < 2) return undefined;
+
+  // tbl_items_fonds.pourcentage est NOT NULL (voir sql/items_fonds.sql) et
+  // remplacerRepartition() rejette toute ligne avec pourcentage <= 0/null — un segment
+  // pourcentage laissé vide dans le fichier Excel ferait donc disparaître ce fonds de la
+  // répartition (pas juste son pourcentage). Valeur de repli : répartition égale entre les
+  // fonds dont le pourcentage n'a pas été renseigné.
+  lignes.forEach(l => {
+    if (l.pourcentage == null) l.pourcentage = Math.round((100 / lignes.length) * 100) / 100;
+  });
+
+  return lignes;
 }
 
 // ==================== HELPER : DONNÉES DE BASE (tbl_items) ====================
@@ -427,14 +507,17 @@ function buildBaseData(row, formulaireType) {
     date_publication:             row['date_publication']            || null,
     categorie_document:           row['categorie_document']          || null,
     format_support:               row['format_support']              || null,
-    fonds_budgetaire:             row['fonds_budgetaire']            || null,
+    // premierSegment : si la cellule contient un partage de fonds ("PE-034;PE-028"), seul
+    // le 1er fonds sert de valeur "représentative" pour ces colonnes plates de tbl_items —
+    // voir buildFondsRepartition. Une cellule sans ";" reste inchangée (1 seul segment).
+    fonds_budgetaire:             premierSegment(row['fonds_budgetaire']),
     fonds_sn_projet:              row['fonds_sn_projet']             || null,
     bibliotheque:                 row['bibliotheque']                || null,
     localisation_emplacement:     row['localisation_emplacement']    || null,
     demandeur:                    row['demandeur']                   || null,
-    prix_cad:                     row['prix_cad']            ? parseFloat(row['prix_cad']) : null,
-    devise_originale:             row['devise_originale']            || null,
-    prix_devise_originale:        row['prix_devise_originale'] ? parseFloat(row['prix_devise_originale']) : null,
+    prix_cad:                     premierSegment(row['prix_cad']) ? parseFloat(premierSegment(row['prix_cad'])) : null,
+    devise_originale:             premierSegment(row['devise_originale']),
+    prix_devise_originale:        premierSegment(row['prix_devise_originale']) ? parseFloat(premierSegment(row['prix_devise_originale'])) : null,
     personne_a_aviser_nom:        row['personne_a_aviser_nom']       || null,
     personne_a_aviser_courriel:   row['personne_a_aviser_courriel']  || null,
     source_information:           row['source_information']          || null,
@@ -470,9 +553,12 @@ function parseBool(val) {
 const COMMON_HEADERS = [
   'titre_document', 'sous_titre', 'isbn_issn', 'editeur',
   'date_publication', 'categorie_document', 'format_support',
-  'fonds_budgetaire', 'fonds_sn_projet', 'bibliotheque',
-  'localisation_emplacement', 'demandeur',
-  'prix_cad', 'devise_originale', 'prix_devise_originale',
+  'bibliotheque', 'localisation_emplacement', 'demandeur',
+  // Informations financières — champs regroupés, dans le même ordre que les
+  // formulaires web (voir item-formulaire.component.html) : Devise, Prix (devise
+  // originale), Prix CAD, Fonds budgétaire, Fonds SN.
+  'devise_originale', 'prix_devise_originale', 'prix_cad',
+  'fonds_budgetaire', 'fonds_sn_projet',
   'personne_a_aviser_nom',
   'source_information', 'note_commentaire',
   'creation_notice_dtdm', 'note_dtdm',
@@ -482,17 +568,25 @@ const COMMON_HEADERS = [
 
 const COMMON_REQUIRED = ['titre_document', 'demandeur', 'bibliotheque', 'isbn_issn'];
 
+// Colonne optionnelle pour répartir un item entre plusieurs fonds budgétaires (fonds
+// partagés) — voir buildFondsRepartition. Pas de colonnes numérotées : fonds_budgetaire/
+// prix_cad/devise_originale/prix_devise_originale (déjà dans COMMON_HEADERS) acceptent
+// plusieurs valeurs séparées par ";" dans la même cellule ; pourcentage est la seule
+// colonne réellement nouvelle. Réservée aux 3 formulaires qui supportent le partage
+// (Nouvel achat unique, Nouvel abonnement, Modification et CCOL).
+const FONDS_PARTAGES_HEADERS = ['pourcentage'];
+
 const IMPORT_CONFIGS = {
 
   // ── Nouvel achat unique ──────────────────────────────────────────
   'Nouvel achat unique': {
     requiredColumns: [...COMMON_REQUIRED,
-      'editeur', 'categorie_document', 'format_support', 'fonds_budgetaire',
-      'prix_cad', 'devise_originale', 'prix_devise_originale',
+      'editeur', 'categorie_document', 'format_support',
+      'devise_originale', 'prix_devise_originale', 'prix_cad', 'fonds_budgetaire',
       'date_publication', 'source_information'
     ],
     templateHeaders: [
-      'priorite_demande', ...COMMON_HEADERS,
+      'priorite_demande', ...COMMON_HEADERS, ...FONDS_PARTAGES_HEADERS,
       'id_ressource', 'projets_speciaux', 'format_pret_numerique',
       'type_monographie', 'format_electronique',
       'reserve_cours', 'reserve_cours_sigle', 'reserve_cours_session', 'reserve_cours_enseignant',
@@ -515,12 +609,12 @@ const IMPORT_CONFIGS = {
   // ── Nouvel abonnement ────────────────────────────────────────────
   'Nouvel abonnement': {
     requiredColumns: [...COMMON_REQUIRED,
-      'editeur', 'categorie_document', 'format_support', 'fonds_budgetaire',
-      'prix_cad', 'devise_originale', 'prix_devise_originale',
+      'editeur', 'categorie_document', 'format_support',
+      'devise_originale', 'prix_devise_originale', 'prix_cad', 'fonds_budgetaire',
       'source_information', 'date_debut_abonnement'
     ],
     templateHeaders: [
-      'priorite_demande', ...COMMON_HEADERS, 'projet_special',
+      'priorite_demande', ...COMMON_HEADERS, ...FONDS_PARTAGES_HEADERS, 'projet_special',
       'date_debut_abonnement', 'type_monographie',
       'usager_aviser_reservation'
     ],
@@ -534,12 +628,12 @@ const IMPORT_CONFIGS = {
   // ── Modification et CCOL ─────────────────────────────────────────
   'Modification et CCOL': {
     requiredColumns: [...COMMON_REQUIRED,
-      'editeur', 'categorie_document', 'format_support', 'fonds_budgetaire',
-      'prix_cad', 'devise_originale', 'prix_devise_originale',
+      'editeur', 'categorie_document', 'format_support',
+      'devise_originale', 'prix_devise_originale', 'prix_cad', 'fonds_budgetaire',
       'source_information', 'precision_demande'
     ],
     templateHeaders: [
-      'priorite_demande', ...COMMON_HEADERS, 'projet_special',
+      'priorite_demande', ...COMMON_HEADERS, ...FONDS_PARTAGES_HEADERS, 'projet_special',
       'precision_demande', 'numero_oclc', 'date_debut_abonnement',
        'usager_aviser_activation'
     ],
@@ -554,8 +648,8 @@ const IMPORT_CONFIGS = {
   // ── PEB Tipasa numérique ─────────────────────────────────────────
   'PEB Tipasa numérique': {
     requiredColumns: [...COMMON_REQUIRED,
-      'editeur', 'categorie_document', 'format_support', 'fonds_budgetaire',
-      'prix_cad', 'devise_originale', 'prix_devise_originale',
+      'editeur', 'categorie_document', 'format_support',
+      'devise_originale', 'prix_devise_originale', 'prix_cad', 'fonds_budgetaire',
       'source_information', 'gobi_vu_format_numerique'
     ],
     templateHeaders: [
@@ -575,8 +669,9 @@ const IMPORT_CONFIGS = {
   // ── Requête ACQ Accessibilité ────────────────────────────────────
   'Requête ACQ Accessibilité': {
     requiredColumns: [...COMMON_REQUIRED,
-      'editeur', 'categorie_document', 'format_support', 'fonds_budgetaire',
-      'prix_cad', 'devise_originale', 'prix_devise_originale', 'source_information'
+      'editeur', 'categorie_document', 'format_support',
+      'devise_originale', 'prix_devise_originale', 'prix_cad', 'fonds_budgetaire',
+      'source_information'
     ],
     templateHeaders: [
       'priorite_demande', ...COMMON_HEADERS, 'projet_special', 'format_pret_numerique',
@@ -606,8 +701,9 @@ const IMPORT_CONFIGS = {
   // ── Suggestion d'achat - Usager ──────────────────────────────────
   "Suggestion d'achat - Usager": {
     requiredColumns: [...COMMON_REQUIRED,
-      'editeur', 'categorie_document', 'format_support', 'fonds_budgetaire',
-      'prix_cad', 'devise_originale', 'prix_devise_originale', 'source_information',
+      'editeur', 'categorie_document', 'format_support',
+      'devise_originale', 'prix_devise_originale', 'prix_cad', 'fonds_budgetaire',
+      'source_information',
       'auteur', 'usager_statut', 'usager_faculte',
       'usager_courriel', 'bibliothecaire_disciplinaire'
     ],

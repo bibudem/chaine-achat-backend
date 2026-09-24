@@ -1,5 +1,6 @@
 const pool = require('../config/postgres.config');
 const PiecesJointesModel = require('./pieces-jointes');
+const ItemsFondsModel = require('./items-fonds');
 const { filterToTableColumns } = require('../util/db-columns');
 
 // ── Helpers internes ──────────────────────────────────────────────────────────
@@ -267,6 +268,9 @@ const ReponsesModel = {
       );
       const itemId = rows[0].item_id;
 
+      // Répartition entre plusieurs fonds budgétaires, si l'usager en a ajouté (fonds partagés)
+      await ItemsFondsModel.remplacerRepartition(client, itemId, b.fonds_repartition);
+
       // 2. tbl_nouvel_achat_unique
       await client.query(
         `INSERT INTO tbl_nouvel_achat_unique (
@@ -343,6 +347,7 @@ const ReponsesModel = {
       const specificData = data.specificData || {};
       const itemId = await insertItemBase(client, baseData);
       await insertSpecificData(client, itemId, reponse.type_formulaire, specificData);
+      await ItemsFondsModel.remplacerRepartition(client, itemId, baseData.fonds_repartition);
       await client.query(
         'UPDATE tbl_reponses SET item_id_cree = $1 WHERE id = $2',
         [itemId, reponse.id]
@@ -499,6 +504,10 @@ const ReponsesModel = {
         vals
       );
       const itemId = rows[0].item_id;
+
+      // baseData.fonds_repartition n'est pas une colonne de tbl_items (filtré par
+      // filterToTableColumns ci-dessus) — on la lit depuis baseData, pas safeBase.
+      await ItemsFondsModel.remplacerRepartition(client, itemId, baseData.fonds_repartition);
 
       await insertSpecificTable(client, itemId, reponse.type_formulaire, specificData);
 

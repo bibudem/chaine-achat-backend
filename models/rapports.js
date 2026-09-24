@@ -168,6 +168,23 @@ async function rapportDetaille(filters = {}, limit = 100, offset = 0) {
     SELECT
       i.*,
 
+      -- Fonds budgétaire : si l'item est réparti sur plusieurs fonds (fonds partagés,
+      -- voir tbl_items_fonds), concatène "FONDS (XX,XX %)" de façon lisible dans cette
+      -- même colonne ; sinon la valeur simple de tbl_items.fonds_budgetaire.
+      COALESCE(
+        (SELECT string_agg(f.fonds_budgetaire || ' (' || replace(f.pourcentage::text, '.', ',') || ' %)', ' + ' ORDER BY f.ordre)
+           FROM tbl_items_fonds f WHERE f.item_id = i.item_id),
+        i.fonds_budgetaire
+      ) AS fonds_budgetaire,
+
+      -- Devise originale : si fonds partagés, une devise par fonds (même ordre que
+      -- fonds_budgetaire ci-dessus) séparées par ";" ; sinon la valeur simple.
+      COALESCE(
+        (SELECT string_agg(f.devise_originale, ';' ORDER BY f.ordre)
+           FROM tbl_items_fonds f WHERE f.item_id = i.item_id),
+        i.devise_originale
+      ) AS devise_originale,
+
       -- Modification et CCOL
       mc.precision_demande,
       mc.numero_oclc,
