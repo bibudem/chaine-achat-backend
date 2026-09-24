@@ -15,9 +15,11 @@ const ALLOWED_MIME = [
   'application/msword',                                                  // .doc
   'application/vnd.ms-outlook',                                          // .msg
   'message/rfc822',                                                      // .eml
+  'image/jpeg',                                                          // .jpg, .jpeg
+  'image/png',                                                           // .png
   'application/octet-stream', // certains navigateurs envoient ce type pour .msg/.eml/.xlsx/.docx
 ];
-const ALLOWED_EXT = ['.pdf', '.xlsx', '.xls', '.doc', '.docx', '.msg', '.eml'];
+const ALLOWED_EXT = ['.pdf', '.xlsx', '.xls', '.doc', '.docx', '.msg', '.eml', '.jpg', '.jpeg', '.png'];
 
 // multer/busboy décode le nom de fichier envoyé par le navigateur en latin1 par défaut,
 // alors que les navigateurs l'encodent en UTF-8 (RFC 5987/6266) — sans ce correctif, un
@@ -36,7 +38,7 @@ const upload = multer({
     if (ALLOWED_MIME.includes(file.mimetype) || ALLOWED_EXT.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Seuls les fichiers PDF, Word (.doc, .docx), Excel (.xlsx, .xls) ou courriel (.msg, .eml) sont acceptés.'));
+      cb(new Error('Seuls les fichiers PDF, Word (.doc, .docx), Excel (.xlsx, .xls), courriel (.msg, .eml) ou image (.jpg, .jpeg, .png) sont acceptés.'));
     }
   }
 });
