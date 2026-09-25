@@ -226,6 +226,7 @@ async function rapportDetaille(filters = {}, limit = 100, offset = 0) {
       racq.permalien_sofia,
       racq.fournisseur_contacte_sans_succes,
       racq.exemplaire_detenu,
+      racq.exemplaire_electronique_detenu,
       racq.verification_caeb,
       racq.verification_sqla,
       racq.verification_emma,

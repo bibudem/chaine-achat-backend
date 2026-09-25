@@ -667,16 +667,18 @@ const IMPORT_CONFIGS = {
   },
 
   // ── Requête ACQ Accessibilité ────────────────────────────────────
+  // categorie_document n'est plus un champ de ce formulaire (remplacé par type_monographie,
+  // spécifique à Accessibilité — voir requete-accessibilite côté usager) : pas de colonne requise.
   'Requête ACQ Accessibilité': {
     requiredColumns: [...COMMON_REQUIRED,
-      'editeur', 'categorie_document', 'format_support',
+      'editeur', 'format_support',
       'devise_originale', 'prix_devise_originale', 'prix_cad', 'fonds_budgetaire',
       'source_information'
     ],
     templateHeaders: [
       'priorite_demande', ...COMMON_HEADERS, 'projet_special', 'format_pret_numerique',
       'reference_usager', 'besoin_specifique_format', 'type_monographie',
-      'fournisseur_contacte_sans_succes', 'exemplaire_detenu',
+      'fournisseur_contacte_sans_succes', 'exemplaire_detenu', 'exemplaire_electronique_detenu',
       'verification_caeb', 'verification_sqla', 'verification_emma',
       'permalien_sofia', 'acq_numerisation_recommandee',
       'acq_date_demande_editeur', 'acq_date_livraison_estimee', 'acq_responsable_courriel'
@@ -687,6 +689,7 @@ const IMPORT_CONFIGS = {
       type_monographie:                 row['type_monographie']                  || null,
       fournisseur_contacte_sans_succes: row['fournisseur_contacte_sans_succes']  || null,
       exemplaire_detenu:                row['exemplaire_detenu']                 || null,
+      exemplaire_electronique_detenu:   row['exemplaire_electronique_detenu']    || null,
       verification_caeb:                row['verification_caeb']                 || null,
       verification_sqla:                row['verification_sqla']                 || null,
       verification_emma:                row['verification_emma']                 || null,
