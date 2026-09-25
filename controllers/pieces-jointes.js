@@ -7,19 +7,25 @@ const ReponsesModel       = require('../models/reponses');
 const MAX_SIZE  = 10 * 1024 * 1024; // 10 Mo
 const MAX_FILES = 3;
 
-const ALLOWED_MIME = [
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',   // .xlsx
-  'application/vnd.ms-excel',                                            // .xls
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
-  'application/msword',                                                  // .doc
-  'application/vnd.ms-outlook',                                          // .msg
-  'message/rfc822',                                                      // .eml
-  'image/jpeg',                                                          // .jpg, .jpeg
-  'image/png',                                                           // .png
-  'application/octet-stream', // certains navigateurs envoient ce type pour .msg/.eml/.xlsx/.docx
-];
-const ALLOWED_EXT = ['.pdf', '.xlsx', '.xls', '.doc', '.docx', '.msg', '.eml', '.jpg', '.jpeg', '.png'];
+// Le type MIME déclaré par le client (file.mimetype) n'est jamais fiable — un navigateur ou
+// un attaquant peut envoyer n'importe quel Content-Type avec n'importe quel nom de fichier, et
+// multer ne l'inspecte pas. On n'accepte donc que sur la base de l'extension (liste fermée), et
+// on redérive nous-mêmes le type MIME stocké/servi depuis cette même extension plutôt que de
+// faire confiance à file.mimetype — sinon un fichier "evil.pdf" envoyé avec
+// Content-Type: text/html serait resservi tel quel au téléchargement (usurpation de type).
+const EXT_TO_MIME = {
+  '.pdf':  'application/pdf',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xls':  'application/vnd.ms-excel',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.doc':  'application/msword',
+  '.msg':  'application/vnd.ms-outlook',
+  '.eml':  'message/rfc822',
+  '.jpg':  'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png':  'image/png',
+};
+const ALLOWED_EXT = Object.keys(EXT_TO_MIME);
 
 // multer/busboy décode le nom de fichier envoyé par le navigateur en latin1 par défaut,
 // alors que les navigateurs l'encodent en UTF-8 (RFC 5987/6266) — sans ce correctif, un
@@ -29,13 +35,19 @@ function decoderNomFichier(nom) {
   return Buffer.from(nom, 'latin1').toString('utf8');
 }
 
+function typeMimeFiable(originalname) {
+  const name = originalname.toLowerCase();
+  const ext  = name.slice(name.lastIndexOf('.'));
+  return EXT_TO_MIME[ext] || 'application/octet-stream';
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits:  { fileSize: MAX_SIZE, files: MAX_FILES },
   fileFilter: (_req, file, cb) => {
     const name = file.originalname.toLowerCase();
     const ext  = name.slice(name.lastIndexOf('.'));
-    if (ALLOWED_MIME.includes(file.mimetype) || ALLOWED_EXT.includes(ext)) {
+    if (ALLOWED_EXT.includes(ext)) {
       cb(null, true);
     } else {
       cb(new Error('Seuls les fichiers PDF, Word (.doc, .docx), Excel (.xlsx, .xls), courriel (.msg, .eml) ou image (.jpg, .jpeg, .png) sont acceptés.'));
@@ -71,7 +83,7 @@ const PiecesJointesController = {
           reponse_id:    reponseId,
           item_id:       reponse.item_id_cree || null,
           nom_fichier:   decoderNomFichier(file.originalname),
-          type_mime:     file.mimetype,
+          type_mime:     typeMimeFiable(file.originalname),
           taille_octets: file.size,
           contenu:       file.buffer
         });
@@ -118,7 +130,7 @@ const PiecesJointesController = {
         const piece = await PiecesJointesModel.create({
           item_id:       itemId,
           nom_fichier:   decoderNomFichier(file.originalname),
-          type_mime:     file.mimetype,
+          type_mime:     typeMimeFiable(file.originalname),
           taille_octets: file.size,
           contenu:       file.buffer
         });

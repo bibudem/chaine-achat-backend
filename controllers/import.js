@@ -445,7 +445,11 @@ async function upsertRow(client, row, formulaireType, config) {
 // lignes).
 function decouperColonne(val) {
   if (val == null || val === '') return [];
-  return String(val).split(';').map(s => s.trim()).filter(s => s !== '');
+  // Ne PAS filtrer les segments vides : un ";" laissé vide (ex. pourcentage non renseigné
+  // pour le 1er fonds : ";60") doit rester à sa position pour que ce segment s'aligne
+  // toujours avec le bon fonds dans buildFondsRepartition — le filtrer décalerait tous les
+  // segments suivants d'un cran et associerait la mauvaise valeur au mauvais fonds.
+  return String(val).split(';').map(s => s.trim());
 }
 
 /** Premier segment d'une colonne pouvant contenir plusieurs valeurs séparées par ";" —
@@ -675,8 +679,12 @@ const IMPORT_CONFIGS = {
       'devise_originale', 'prix_devise_originale', 'prix_cad', 'fonds_budgetaire',
       'source_information'
     ],
+    // categorie_document retiré de COMMON_HEADERS pour ce type : le proposer dans le gabarit
+    // inviterait à le remplir, mais buildBaseData (générique, tous types) le sauvegarderait
+    // quand même dans tbl_items alors qu'il n'est plus affiché nulle part pour Accessibilité.
     templateHeaders: [
-      'priorite_demande', ...COMMON_HEADERS, 'projet_special', 'format_pret_numerique',
+      'priorite_demande', ...COMMON_HEADERS.filter(h => h !== 'categorie_document'),
+      'projet_special', 'format_pret_numerique',
       'reference_usager', 'besoin_specifique_format', 'type_monographie',
       'fournisseur_contacte_sans_succes', 'exemplaire_detenu', 'exemplaire_electronique_detenu',
       'verification_caeb', 'verification_sqla', 'verification_emma',

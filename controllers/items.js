@@ -299,7 +299,7 @@ const itemsController = {
       const anneeRaw = (req.query.annee || '').trim();
       const annee    = anneeRaw && anneeRaw !== 'all' && /^\d{4}$/.test(anneeRaw) ? parseInt(anneeRaw, 10) : null;
 
-      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','priorite_demande','isbn_issn','demandeur','bibliotheque','fonds_budgetaire','statut_bibliotheque','statut_acq','suivi_acq','date_creation']);
+      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','priorite_demande','isbn_issn','demandeur','bibliotheque','fonds_budgetaire','statut_bibliotheque','statut_acq','suivi_acq','date_creation','date_modification']);
       // "defaut" (ou sort absent) : tri multi-critères (voir orderClause plus bas) plutôt
       // qu'un simple tri par colonne — appliqué uniquement à l'arrivée sur la page, avant
       // qu'un clic sur un en-tête de colonne ne remplace ce tri par un tri simple.
@@ -380,7 +380,13 @@ const itemsController = {
              ELSE 3
            END,
            date_creation DESC`
-        : `${sortCol} ${sortDir}`;
+        // "Dern. mise à jour" (colonne date_modification) affiche date_modification, ou
+        // date_creation si la première est nulle (jamais modifié) — le tri doit utiliser la
+        // même valeur de repli, sinon les items jamais modifiés (NULL) se retrouvent
+        // classés en premier/dernier au lieu de leur date de création réelle.
+        : sortCol === 'date_modification'
+          ? `COALESCE(date_modification, date_creation) ${sortDir}`
+          : `${sortCol} ${sortDir}`;
 
       params.push(limit, offset);
       const dataQuery  = `SELECT * FROM tbl_items ${where} ORDER BY ${orderClause} LIMIT $${filterParamLen + 1} OFFSET $${filterParamLen + 2}`;
