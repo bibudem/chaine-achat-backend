@@ -299,14 +299,26 @@ const itemsController = {
       const anneeRaw = (req.query.annee || '').trim();
       const annee    = anneeRaw && anneeRaw !== 'all' && /^\d{4}$/.test(anneeRaw) ? parseInt(anneeRaw, 10) : null;
 
-      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','priorite_demande','isbn_issn','demandeur','bibliotheque','fonds_budgetaire','statut_bibliotheque','suivi_acq','date_creation']);
+      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','priorite_demande','isbn_issn','demandeur','bibliotheque','fonds_budgetaire','statut_bibliotheque','statut_acq','suivi_acq','date_creation']);
+      // "defaut" (ou sort absent) : tri multi-critères (voir orderClause plus bas) plutôt
+      // qu'un simple tri par colonne — appliqué uniquement à l'arrivée sur la page, avant
+      // qu'un clic sur un en-tête de colonne ne remplace ce tri par un tri simple.
+      const isDefaultSort = !req.query.sort || req.query.sort === 'defaut';
       const sortCol = SORT_COLS.has(req.query.sort) ? req.query.sort : 'date_creation';
       const sortDir = req.query.order === 'asc' ? 'ASC' : 'DESC';
 
       const conditions = [];
       const params     = [];
 
-      if (search) {
+      // Recherche par ID : préfixe "#" (ex. "#5") pour ne renvoyer QUE l'item #5, sans quoi
+      // "5" retourne aussi tout ISBN/fonds/etc. contenant ce chiffre (voir onglet Recherche,
+      // "Option de recherche"). Repli sur la recherche multi-champs habituelle si ce qui suit
+      // le "#" n'est pas un nombre entier.
+      const rechercheParId = /^#\s*(\d+)$/.exec(search);
+      if (rechercheParId) {
+        params.push(parseInt(rechercheParId[1], 10));
+        conditions.push(`item_id = $${params.length}`);
+      } else if (search) {
         params.push(`%${search}%`);
         const i = params.length;
         conditions.push(`(titre_document ILIKE $${i} OR isbn_issn ILIKE $${i} OR demandeur ILIKE $${i} OR editeur ILIKE $${i} OR CAST(item_id AS TEXT) LIKE $${i})`);
@@ -354,8 +366,24 @@ const itemsController = {
       const where          = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
       const filterParamLen = params.length;
 
+      // Tri par défaut (onglet Recherche) : demandes soumises aux ACQ et pas encore
+      // traitées en premier, triées par priorité puis par date de création la plus
+      // récente — plutôt qu'un simple tri par colonne.
+      const orderClause = isDefaultSort
+        ? `CASE WHEN statut_bibliotheque = 'Soumettre aux ACQ' THEN 0 ELSE 1 END,
+           CASE WHEN statut_acq = 'En attente' THEN 0 ELSE 1 END,
+           CASE WHEN suivi_acq = 'En attente de traitement' THEN 0 ELSE 1 END,
+           CASE priorite_demande
+             WHEN 'Urgent'      THEN 0
+             WHEN 'Prioritaire' THEN 1
+             WHEN 'Régulier'    THEN 2
+             ELSE 3
+           END,
+           date_creation DESC`
+        : `${sortCol} ${sortDir}`;
+
       params.push(limit, offset);
-      const dataQuery  = `SELECT * FROM tbl_items ${where} ORDER BY ${sortCol} ${sortDir} LIMIT $${filterParamLen + 1} OFFSET $${filterParamLen + 2}`;
+      const dataQuery  = `SELECT * FROM tbl_items ${where} ORDER BY ${orderClause} LIMIT $${filterParamLen + 1} OFFSET $${filterParamLen + 2}`;
       const countQuery = `SELECT COUNT(*) AS total FROM tbl_items ${where}`;
 
       const [itemsResult, countResult] = await Promise.all([
