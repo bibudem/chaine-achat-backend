@@ -35,6 +35,8 @@ const importLogsRoutes      = loadModule('./routes/import-logs',     'Routes imp
 const configRoutes          = loadModule('./routes/config',          'Routes config');
 const tauxDevisesRoutes      = loadModule('./routes/taux-devises',    'Routes taux-devises');
 const utilisateursRoutes     = loadModule('./routes/utilisateurs',    'Routes utilisateurs');
+const fondsBudgetairesRoutes = loadModule('./routes/fonds-budgetaires', 'Routes fonds-budgetaires');
+const bibliothequesRoutes    = loadModule('./routes/bibliotheques',    'Routes bibliotheques');
 const validationMiddleware  = loadModule('./middleware/validation.middleware', 'Middleware validation');
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -97,6 +99,8 @@ app.use('/home',   homeRoutes);
 app.use('/config', configRoutes);
 app.use('/taux-devises', tauxDevisesRoutes);
 app.use('/utilisateurs', utilisateursRoutes);
+app.use('/fonds-budgetaires', fondsBudgetairesRoutes);
+app.use('/bibliotheques', bibliothequesRoutes);
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ROUTE RACINE
