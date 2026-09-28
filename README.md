@@ -8,15 +8,16 @@ Le frontend (Angular) se trouve dans un dépôt séparé.
 
 ## Fonctionnalités
 
-- Créer et modifier des demandes d'achat
-- Lister toutes les demandes (avec filtres par type, statut, date)
-- Générer des rapports
-- Gérer les informations de budget
+- Créer et modifier des demandes d'achat (6 types de formulaires)
+- Répartition d'un item entre plusieurs fonds budgétaires (fonds partagés)
+- Lister toutes les demandes (avec filtres avancés, recherche par titre/ISBN/#ID, tri multi-critères par défaut)
+- Générer des rapports et les exporter en Excel
+- Listes de référence configurables (fonds budgétaires, bibliothèques, taux de change) — CRUD réservé aux Admin, en lecture pour tout usager connecté
 - Import en lot depuis un fichier Excel, avec journal des imports
 - Gestion des pièces jointes (ajout, téléchargement, suppression)
 - Notifications automatiques par courriel via n8n
-- Décision ACQ (approbation/refus) directement via un lien courriel
-- Authentification et accès sécurisé
+- Décision ACQ (approbation/refus) accessible via un lien direct envoyé par courriel (connexion Admin/TDM requise)
+- Authentification Azure AD (UdeM) + gestion des rôles applicatifs (Admin / TDM / Usager) en base
 
 ## Prérequis
 
@@ -92,7 +93,13 @@ Dans PostgreSQL :
 CREATE DATABASE chaineAchat;
 ```
 
-Ensuite, exécute le script SQL fourni (si tu en as un) pour créer les tables.
+Le dossier `sql/` (à la racine du projet, au même niveau que `chaine-achat-backend/` et
+`chaine-achat-frontend/`) contient les migrations incrémentales ajoutées au fil des
+fonctionnalités (ex. `utilisateurs.sql`, `fonds_budgetaires.sql`, `bibliotheques.sql`,
+`items_fonds.sql`, `taux_devises_historique.sql`...) — chacune sûre à rejouer
+(`IF NOT EXISTS` / `ON CONFLICT`). Il ne contient **pas** le schéma de base
+(`tbl_items` et les tables spécifiques par type de formulaire) : demande-le à l'équipe
+ou récupère-le depuis une base existante si tu pars de zéro.
 
 ### 6. Démarrer l’API
 
