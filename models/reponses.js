@@ -223,12 +223,12 @@ const ReponsesModel = {
           format_pret_numerique,
           statut_bibliotheque, statut_acq, note_commentaire,
           catalogue, creation_notice_dtdm,
-          note_dtdm, utilisateur_modification, date_modification
+          note_dtdm, note_interne_dtdm, utilisateur_modification, date_modification
         ) VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
           $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
           $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,
-          $31,$32,$33,NOW()
+          $31,$32,$33,$34,NOW()
         ) RETURNING item_id`,
         [
           'Nouvel achat unique',                                                     // $1
@@ -263,7 +263,8 @@ const ReponsesModel = {
           b.catalogue                    || null,                                   // $30
           b.creation_notice_dtdm === true || b.creation_notice_dtdm === 'true',    // $31
           b.note_dtdm                    || null,                                   // $32
-          reponse.usager_nom             || null                                    // $33
+          b.note_interne_dtdm            || null,                                   // $33
+          reponse.usager_nom             || null                                    // $34
         ]
       );
       const itemId = rows[0].item_id;

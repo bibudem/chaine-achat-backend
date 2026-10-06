@@ -528,6 +528,7 @@ function buildBaseData(row, formulaireType) {
     note_commentaire:             row['note_commentaire']            || null,
     creation_notice_dtdm:         parseBool(row['creation_notice_dtdm']),
     note_dtdm:                    row['note_dtdm']                   || null,
+    note_interne_dtdm:            row['note_interne_dtdm']           || null,
     statut_bibliotheque:          row['statut_bibliotheque']         || null,
     statut_acq:                   row['statut_acq']                  || null,
     suivi_acq:                    row['suivi_acq']                   || null,
@@ -565,7 +566,7 @@ const COMMON_HEADERS = [
   'fonds_budgetaire', 'fonds_sn_projet',
   'personne_a_aviser_nom',
   'source_information', 'note_commentaire',
-  'creation_notice_dtdm', 'note_dtdm',
+  'creation_notice_dtdm', 'note_dtdm', 'note_interne_dtdm',
   'statut_bibliotheque', 'statut_acq', 'suivi_acq', 'note_acq',
   'bibliotheque_note_interne', 'catalogue'
 ];
