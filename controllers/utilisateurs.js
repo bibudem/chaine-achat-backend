@@ -1,7 +1,7 @@
 const UtilisateursModel = require('../models/utilisateurs');
 const { publicError } = require('../util/errors');
 
-const ROLES_VALIDES = ['Admin', 'TDM', 'Usager'];
+const ROLES_VALIDES = ['SuperAdmin', 'Admin', 'TDM', 'Usager'];
 
 const sendSuccess = (res, data, msg = 'OK') =>
   res.json({ success: true, message: msg, data, timestamp: new Date().toISOString() });

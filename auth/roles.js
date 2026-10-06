@@ -6,6 +6,7 @@ const GROUPES_BIB_USAGER = ['BIB-USAGERS', 'BIB-USAGERS-SURVIVANTS'];
 
 // Libellé affiché côté frontend (sessionStorage groupeAdmin) pour chaque rôle.
 const GROUPE_BY_ROLE = {
+  SuperAdmin: 'Gestionnaire',
   Admin:  'Gestionnaire',
   TDM:    'TDM',
   Usager: 'Usager',
