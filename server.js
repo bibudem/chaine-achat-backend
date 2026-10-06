@@ -80,8 +80,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate limiting (optionnel)
-if (validationMiddleware?.apiLimiter) {
+// Rate limiting (optionnel) — désactivé hors production : 100 req/15min est vite atteint
+// en dev (rechargements, tests manuels répétés) et bloque le développeur, pas un attaquant.
+if (validationMiddleware?.apiLimiter && process.env.NODE_ENV === 'production') {
   app.use('/', validationMiddleware.apiLimiter);
   //console.log('Rate limiting activé');
 }
