@@ -1,7 +1,9 @@
-// Azure AD (App Role BIB-USAGERS/BIB-USAGERS-SURVIVANTS) sert de porte d'entrée :
-// confirme que la personne fait partie du personnel/usagers des bibliothèques.
-// Le rôle exact (Admin/TDM/Usager) est géré dans tbl_utilisateurs (base locale),
-// indépendamment d'Azure — voir models/utilisateurs.js et auth/callback.js.
+// N'est plus une porte d'entrée (tout compte UdeM authentifié entre désormais, voir
+// auth/callback.js) : sert uniquement à distinguer, au premier login, le personnel des
+// bibliothèques (rôle Employe) du reste de la communauté UdeM (rôle Usager, accès restreint
+// à ses propres demandes). Le rôle exact (Admin/TDM/Employe/Usager/SuperAdmin) est ensuite
+// géré dans tbl_utilisateurs (base locale), indépendamment d'Azure — voir
+// models/utilisateurs.js et auth/callback.js.
 const GROUPES_BIB_USAGER = ['BIB-USAGERS', 'BIB-USAGERS-SURVIVANTS'];
 
 // Libellé affiché côté frontend (sessionStorage groupeAdmin) pour chaque rôle.
@@ -9,13 +11,15 @@ const GROUPE_BY_ROLE = {
   SuperAdmin: 'Gestionnaire',
   Admin:  'Administrateur',
   TDM:    'TDM',
+  Employe: 'Employé',
   Usager: 'Usager',
 };
 
 /**
- * Porte d'entrée de l'application : la personne doit être membre d'un des App
- * Roles Azure AD ci-dessus. Insensible à la casse/espaces (évite qu'un simple
- * écart de saisie dans Azure bloque silencieusement un accès légitime).
+ * Vrai si la personne est membre d'un des App Roles Azure AD ci-dessus (personnel des
+ * bibliothèques) — détermine le rôle Employe vs Usager au premier login. Insensible à la
+ * casse/espaces (évite qu'un simple écart de saisie dans Azure change silencieusement le
+ * rôle attribué).
  */
 function isBibUsager(userInfo) {
   const raw = userInfo.roles;

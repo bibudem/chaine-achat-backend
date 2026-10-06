@@ -37,7 +37,7 @@ router.get('/me', requireAuth, (req, res) => {
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    SIMULATION LOCALE (dev uniquement)
-   GET /auth/dev-login?role=superadmin|admin|acq|usager
+   GET /auth/dev-login?role=superadmin|admin|acq|employe|usager
    → crée un JWT directement, sans passer par Azure AD
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 if (process.env.NODE_ENV !== 'production') {
@@ -45,7 +45,8 @@ if (process.env.NODE_ENV !== 'production') {
     superadmin: { sub: 'dev-superadmin-001', email: 'superadmin@udem.dev', nom: 'Système', prenom: 'Super', groupe: 'Gestionnaire', role: 'SuperAdmin' },
     admin:  { sub: 'dev-admin-001',  email: 'admin@udem.dev',  nom: 'Admin',       prenom: 'Système', groupe: 'Administrateur', role: 'Admin' },
     acq:    { sub: 'dev-acq-001',    email: 'acq@udem.dev',    nom: 'TDM',         prenom: 'Agent',   groupe: 'TDM',          role: 'TDM' },
-    usager: { sub: 'dev-usager-001', email: 'usager@udem.dev', nom: 'Bibliothèques', prenom: 'Test',  groupe: 'Usager',       role: 'Usager' },
+    employe: { sub: 'dev-employe-001', email: 'employe@udem.dev', nom: 'Bibliothèques', prenom: 'Test', groupe: 'Employé',   role: 'Employe' },
+    usager: { sub: 'dev-usager-001', email: 'usager@udem.dev', nom: 'UdeM',        prenom: 'Test',    groupe: 'Usager',       role: 'Usager' },
   };
 
   router.get('/dev-login', (req, res) => {

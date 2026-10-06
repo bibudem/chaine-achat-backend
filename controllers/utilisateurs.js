@@ -1,7 +1,9 @@
 const UtilisateursModel = require('../models/utilisateurs');
 const { publicError } = require('../util/errors');
 
-const ROLES_VALIDES = ['SuperAdmin', 'Admin', 'TDM', 'Usager'];
+// 'Usager' (communauté UdeM) est auto-provisionné au premier login Azure AD (voir
+// auth/callback.js) — jamais créé/modifié manuellement ici.
+const ROLES_VALIDES = ['SuperAdmin', 'Admin', 'TDM', 'Employe'];
 
 const sendSuccess = (res, data, msg = 'OK') =>
   res.json({ success: true, message: msg, data, timestamp: new Date().toISOString() });

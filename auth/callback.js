@@ -19,21 +19,19 @@ async function handleCallback(req, res) {
     const tokens   = await auth.exchangeCode(code);
     const userInfo = auth.parseIdToken(tokens.id_token);
 
-    // Porte d'entrée : la personne doit être membre du groupe Azure AD bib-usagers
-    // (App Role), sinon elle n'a rien à faire dans cette application.
-    if (!isBibUsager(userInfo)) {
-      console.warn(`Accès refusé (hors bib-usagers): ${userInfo.preferred_username || userInfo.email}`);
-      return res.redirect(`${config.urls.frontend}/login?error=acces_non_autorise`);
-    }
-
+    // Porte d'entrée : tout compte UdeM authentifié entre dans l'application — bib-usagers
+    // ne sert plus qu'à déterminer le rôle par défaut au premier login, voir plus bas.
     const email  = userInfo.preferred_username || userInfo.email || '';
     const nom    = userInfo.family_name || '';
     const prenom = userInfo.given_name || '';
 
-    // Rôle applicatif (Admin/TDM/Usager) géré en base locale, pas par Azure AD —
-    // voir models/utilisateurs.js. Premier login = création avec rôle Usager par
-    // défaut ; un admin doit ensuite promouvoir la personne au besoin.
-    const utilisateur = await UtilisateursModel.upsertFromLogin({ email, nom, prenom });
+    // Rôle applicatif (Admin/TDM/Employe/Usager/SuperAdmin) géré en base locale, pas par
+    // Azure AD — voir models/utilisateurs.js. Premier login seulement : Employe si membre
+    // bib-usagers (personnel des bibliothèques), Usager sinon (reste de la communauté UdeM,
+    // accès restreint à ses propres demandes) ; un login existant garde son rôle actuel, géré
+    // manuellement en base (jamais réécrasé ici) — un SuperAdmin doit promouvoir au besoin.
+    const roleParDefaut = isBibUsager(userInfo) ? 'Employe' : 'Usager';
+    const utilisateur = await UtilisateursModel.upsertFromLogin({ email, nom, prenom, role: roleParDefaut });
 
     const token = auth.signToken({
       sub:    userInfo.oid || userInfo.sub,

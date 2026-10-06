@@ -14,19 +14,20 @@ const UtilisateursModel = {
     return rows[0] || null;
   },
 
-  // Appelé à chaque login réussi : crée l'usager (rôle par défaut Usager) s'il
-  // n'existe pas encore, sinon met à jour nom/prénom/dernière connexion —
-  // le rôle est géré manuellement en base, jamais écrasé ici.
-  async upsertFromLogin({ email, nom, prenom }) {
+  // Appelé à chaque login réussi : crée l'usager (rôle fourni par l'appelant — voir
+  // auth/callback.js, Employe vs Usager selon bib-usagers) s'il n'existe pas encore, sinon
+  // met à jour nom/prénom/dernière connexion — le rôle d'un compte existant n'est jamais
+  // écrasé ici, il est géré manuellement en base.
+  async upsertFromLogin({ email, nom, prenom, role }) {
     const { rows } = await pool.query(
-      `INSERT INTO tbl_utilisateurs (email, nom, prenom)
-       VALUES ($1, $2, $3)
+      `INSERT INTO tbl_utilisateurs (email, nom, prenom, role)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (email) DO UPDATE
          SET nom = EXCLUDED.nom,
              prenom = EXCLUDED.prenom,
              date_derniere_connexion = NOW()
        RETURNING *`,
-      [email, nom, prenom]
+      [email, nom, prenom, role]
     );
     return rows[0];
   },
