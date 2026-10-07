@@ -536,6 +536,10 @@ function buildBaseData(row, formulaireType) {
     bibliotheque_note_interne:    row['bibliotheque_note_interne']   || null,
     catalogue:                    row['catalogue']                   || null,
     format_pret_numerique:        row['format_pret_numerique']       || null,
+    nombre_utilisateurs:          row['nombre_utilisateurs']         || null,
+    lien_plateforme:              row['lien_plateforme']             || null,
+    acq_responsable_nom:          row['acq_responsable_nom']         || null,
+    description_plateforme:       row['description_plateforme']      || null,
   };
 }
 
@@ -595,7 +599,7 @@ const IMPORT_CONFIGS = {
       'id_ressource', 'projets_speciaux', 'format_pret_numerique',
       'type_monographie', 'format_electronique',
       'reserve_cours', 'reserve_cours_sigle', 'reserve_cours_session', 'reserve_cours_enseignant',
-      'bordereau_imprime', 'quantite'
+      'bordereau_imprime', 'quantite', 'usager_aviser_reservation', 'usager_aviser_activation'
     ],
     buildSpecificData: (row) => ({
       id_ressource:             row['id_ressource']             || null,
@@ -608,6 +612,8 @@ const IMPORT_CONFIGS = {
       reserve_cours_enseignant: row['reserve_cours_enseignant'] || null,
       bordereau_imprime:        row['bordereau_imprime']        || null,
       quantite:                 row['quantite'] ? parseInt(row['quantite'], 10) : null,
+      usager_aviser_reservation: row['usager_aviser_reservation'] || null,
+      usager_aviser_activation:  row['usager_aviser_activation']  || null,
     })
   },
 
