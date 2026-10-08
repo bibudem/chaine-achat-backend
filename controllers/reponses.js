@@ -12,6 +12,7 @@ const N8N_MODIFICATION_CCOL_URL   = config.n8n.modificationCcolUrl;
 const N8N_PEB_TIPASA_URL          = config.n8n.pebTipasaUrl;
 const N8N_REQUETE_ACQ_URL         = config.n8n.requeteAcqUrl;
 const N8N_SPRINGER_URL            = config.n8n.springerUrl;
+const N8N_TRI_DECISION_URL        = config.n8n.triDecisionUrl;
 
 function redirect(res, url) {
   const decodedUrl = decodeURIComponent(url);
@@ -120,6 +121,117 @@ const ReponsesController = {
     } catch (err) {
       console.error('[suggestion] createSuggestion:', err);
       return res.status(500).json({ error: "Erreur lors de l'enregistrement." });
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // SUGGESTION PUBLIQUE (communauté UdeM, formulaire /suggestion-public)
+  // POST /reponses/suggestion-publique — requireAuth
+  // L'identité vient du JWT, jamais du corps de la requête : c'est elle qui recevra les
+  // courriels de décision (tri, puis ACQ). Pas d'item ni de courriel aux ACQ ici : la demande
+  // attend d'abord le tri de l'équipe TechDoc (voir decisionTri).
+  // ═══════════════════════════════════════════════════════════
+  async createSuggestionPublique(req, res) {
+    const { usager_statut, reponses } = req.body;
+    if (!reponses) return res.status(400).json({ error: 'reponses est requis.' });
+
+    const usager_nom      = `${req.user.prenom || ''} ${req.user.nom || ''}`.trim();
+    const usager_courriel = req.user.email;
+    if (!usager_courriel) return res.status(400).json({ error: 'Courriel introuvable dans la session.' });
+
+    try {
+      const row = await ReponsesModel.createSuggestionPublique({
+        usager_nom,
+        usager_courriel,
+        usager_statut,
+        reponses: {
+          ...reponses,
+          demandeur:           usager_nom,
+          usager_nom,
+          usager_courriel,
+          statut_bibliotheque: 'Saisie en cours - En attente',
+        }
+      });
+      return res.status(201).json({ message: 'Suggestion enregistrée.', id: row.id, dateA: row.dateA });
+    } catch (err) {
+      console.error('[suggestion-publique] create:', err);
+      return res.status(500).json({ error: "Erreur lors de l'enregistrement." });
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // TRI DES SUGGESTIONS PUBLIQUES (équipe TechDoc)
+  // GET /reponses/tri?statut=a_trier|a_completer|soumise|refuse&search=&limit=&offset=
+  // ═══════════════════════════════════════════════════════════
+  async listTri(req, res) {
+    const STATUTS_VALIDES = ['a_trier', 'a_completer', 'soumise', 'refuse'];
+    try {
+      const limit  = Math.min(Math.max(parseInt(req.query.limit)  || 20, 1), 100);
+      const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+      const statut = STATUTS_VALIDES.includes(req.query.statut) ? req.query.statut : null;
+      const [result, aTrier] = await Promise.all([
+        ReponsesModel.findTri({
+          statut, limit, offset,
+          search: req.query.search || null,
+        }),
+        ReponsesModel.countATrier(),
+      ]);
+      res.json({ ...result, a_trier: aTrier });
+    } catch (err) {
+      console.error('[tri] listTri:', err);
+      res.status(500).json({ error: 'Erreur lors de la récupération des suggestions.' });
+    }
+  },
+
+  // PUT /reponses/:id/tri  { decision: 'accepte'|'refuse', commentaire }
+  // Le commentaire est obligatoire en cas de refus ; dans les deux cas il est transmis au
+  // demandeur dans le courriel de décision (n8n /tri-decision).
+  async decisionTri(req, res) {
+    const { id } = req.params;
+    const decision    = req.body?.decision;
+    const commentaire = (req.body?.commentaire || '').trim() || null;
+
+    if (!['accepte', 'refuse'].includes(decision)) {
+      return res.status(400).json({ error: "Décision invalide (attendu : 'accepte' ou 'refuse')." });
+    }
+    if (decision === 'refuse' && !commentaire) {
+      return res.status(400).json({ error: 'Un commentaire est obligatoire pour refuser une suggestion.' });
+    }
+    if (commentaire && commentaire.length > 2000) {
+      return res.status(400).json({ error: 'Le commentaire ne doit pas dépasser 2000 caractères.' });
+    }
+
+    try {
+      const parNom = `${req.user.prenom || ''} ${req.user.nom || ''}`.trim() || req.user.email;
+      const { updated, existant } = await ReponsesModel.decisionTri({
+        id, decision, commentaire, par: req.user.email, parNom,
+      });
+
+      if (!updated) {
+        if (!existant) return res.status(404).json({ error: 'Suggestion introuvable.' });
+        if (!existant.tri_statut) return res.status(400).json({ error: "Cette demande n'est pas une suggestion publique." });
+        return res.status(409).json({
+          error: `Cette suggestion a déjà été traitée${existant.tri_par_nom ? ` par ${existant.tri_par_nom}` : ''}.`,
+          tri_statut: existant.tri_statut,
+        });
+      }
+
+      const data = typeof updated.reponses === 'string' ? JSON.parse(updated.reponses) : (updated.reponses || {});
+      _notifierN8n(N8N_TRI_DECISION_URL, 'tri-decision', updated.id, {
+        reponse_id:      updated.id,
+        type_formulaire: "Suggestion d'achat - Usager",
+        decision,
+        commentaire,
+        usager_nom:      updated.usager_nom,
+        usager_courriel: updated.usager_courriel,
+        titre_document:  data.titre_document || null,
+        auteur:          data.auteur || null,
+      });
+
+      return res.json({ success: true, data: updated });
+    } catch (err) {
+      console.error('[tri] decisionTri:', err);
+      return res.status(500).json({ error: "Erreur lors de l'enregistrement de la décision." });
     }
   },
 

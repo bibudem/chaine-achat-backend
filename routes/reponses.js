@@ -2,12 +2,24 @@ const express             = require('express');
 const router              = express.Router();
 const ReponsesController  = require('../controllers/reponses');
 const PiecesJointesController = require('../controllers/pieces-jointes');
+const { requireAuth, requireRole } = require('../middleware/jwt.middleware');
+
+// Équipe de tri des suggestions publiques — Admin/SuperAdmin aussi, pour la supervision.
+const ROLES_TRI = ['TechDoc', 'Admin', 'SuperAdmin'];
 
 // ─────────────────────────────────────────────────────────────
 // SUGGESTION D'ACHAT
 // ─────────────────────────────────────────────────────────────
 router.post('/suggestion',          ReponsesController.createSuggestion);
 router.get('/suggestion_usagers',  ReponsesController.decisionSuggestion);
+
+// ─────────────────────────────────────────────────────────────
+// SUGGESTION PUBLIQUE (communauté UdeM) + TRI PAR L'ÉQUIPE TECHDOC
+// Déclarées avant les routes génériques /:id plus bas.
+// ─────────────────────────────────────────────────────────────
+router.post('/suggestion-publique', requireAuth, ReponsesController.createSuggestionPublique);
+router.get('/tri',                  requireAuth, requireRole(...ROLES_TRI), ReponsesController.listTri);
+router.put('/:id/tri',              requireAuth, requireRole(...ROLES_TRI), ReponsesController.decisionTri);
 
 // ─────────────────────────────────────────────────────────────
 // NOUVEL ACHAT UNIQUE

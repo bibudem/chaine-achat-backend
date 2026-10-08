@@ -44,7 +44,9 @@ async function handleCallback(req, res) {
       azureRaw: userInfo,
     });
 
-    res.redirect(`${config.urls.frontend}/auth-callback?token=${encodeURIComponent(token)}`);
+    // Connexion lancée en popup depuis le formulaire public embarqué (voir routes/auth.js).
+    const popup = String(req.query.state || '').endsWith('.popup') ? '&popup=1' : '';
+    res.redirect(`${config.urls.frontend}/auth-callback?token=${encodeURIComponent(token)}${popup}`);
   } catch (e) {
     console.error('Erreur échange token OAuth:', e.message);
     res.redirect(`${config.urls.frontend}/login?error=token_exchange_failed`);

@@ -46,7 +46,7 @@ const SUGGESTION_SPEC_KEYS = [
   'auteur', 'usager_nom', 'usager_faculte', 'bibliothecaire_disciplinaire',
   'aviser_reservation', 'aviser_reception', 'date_requise_cours',
   'note_usager', 'reserve_cours', 'reserve_cours_sigle', 'bordereau_imprime',
-  'acq_raison_annulation', 'techdoc_suggestion_transmise', 'acq_isbn',
+  'acq_raison_annulation', 'techdoc_suggestion_transmise', 'techdoc_tri_notes', 'acq_isbn',
   'acq_responsable_courriel',
 ];
 
@@ -71,6 +71,120 @@ const ReponsesModel = {
       ]
     );
     return rows[0];
+  },
+
+  // ── Suggestion publique (formulaire /suggestion-public, communauté UdeM) ──────
+  // Même type de formulaire qu'une suggestion interne, mais entre dans la file de tri de
+  // l'équipe TechDoc (tri_statut = 'a_trier') au lieu d'aller directement vers les ACQ.
+  async createSuggestionPublique({ usager_nom, usager_courriel, usager_statut, reponses }) {
+    const { rows } = await pool.query(
+      `INSERT INTO tbl_reponses
+         (type_formulaire, usager_nom, usager_courriel, usager_statut, reponses, tri_statut)
+       VALUES ($1, $2, $3, $4, $5, 'a_trier')
+       RETURNING id, "dateA"`,
+      [
+        "Suggestion d'achat - Usager",
+        usager_nom,
+        usager_courriel,
+        usager_statut,
+        JSON.stringify(reponses || {})
+      ]
+    );
+    return rows[0];
+  },
+
+  // ── Tri des suggestions publiques (équipe TechDoc) ────────────────────────────
+  // Liste unique (plus d'onglets côté UI) couvrant tout le cycle de vie d'une suggestion
+  // publique, triée par ordre de priorité : à trier d'abord (plus anciennes en premier —
+  // premier arrivé, premier servi), puis acceptées mais pas encore complétées, puis
+  // soumises aux ACQ, puis refusées (plus récente décision en premier dans chaque groupe).
+  // `statut` filtre sur l'une de ces quatre catégories ; sans lui, tout le cycle est retourné.
+  async findTri({ statut = null, search = null, limit = 20, offset = 0 } = {}) {
+    const params     = [];
+    const conditions = [`r.tri_statut IN ('a_trier', 'accepte', 'refuse')`];
+    const nonSoumiseSql = `COALESCE(i.statut_bibliotheque, r.reponses->>'statut_bibliotheque') IS DISTINCT FROM 'Soumettre aux ACQ'`;
+    const soumiseSql    = `COALESCE(i.statut_bibliotheque, r.reponses->>'statut_bibliotheque') = 'Soumettre aux ACQ'`;
+
+    if (statut === 'a_trier') {
+      conditions.push(`r.tri_statut = 'a_trier'`);
+    } else if (statut === 'refuse') {
+      conditions.push(`r.tri_statut = 'refuse'`);
+    } else if (statut === 'a_completer') {
+      conditions.push(`r.tri_statut = 'accepte' AND ${nonSoumiseSql}`);
+    } else if (statut === 'soumise') {
+      conditions.push(`r.tri_statut = 'accepte' AND ${soumiseSql}`);
+    }
+
+    if (search) {
+      params.push(`%${search}%`);
+      conditions.push(`(r.reponses->>'titre_document' ILIKE $${params.length}
+                     OR r.usager_nom      ILIKE $${params.length}
+                     OR r.usager_courriel ILIKE $${params.length})`);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    // Priorité : 0 = à trier, 1 = acceptée à compléter, 2 = soumise aux ACQ, 3 = refusée.
+    const priorite = `CASE
+         WHEN r.tri_statut = 'a_trier' THEN 0
+         WHEN r.tri_statut = 'accepte' AND ${nonSoumiseSql} THEN 1
+         WHEN r.tri_statut = 'accepte' THEN 2
+         ELSE 3
+       END`;
+    params.push(limit, offset);
+
+    const { rows } = await pool.query(
+      `SELECT r.id, r."dateA", r.usager_nom, r.usager_courriel, r.usager_statut, r.reponses,
+              r.tri_statut, r.tri_commentaire, r.tri_par, r.tri_par_nom, r.tri_date,
+              r.item_id_cree,
+              COALESCE(i.statut_bibliotheque, r.reponses->>'statut_bibliotheque') AS statut_bibliotheque,
+              i.suivi_acq,
+              i.statut_acq,
+              COUNT(*) OVER() AS total_count
+         FROM tbl_reponses r
+         LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
+         ${where}
+        ORDER BY ${priorite} ASC,
+                 CASE WHEN r.tri_statut = 'a_trier' THEN r."dateA" END ASC,
+                 CASE WHEN r.tri_statut != 'a_trier' THEN COALESCE(r.tri_date, r."dateA") END DESC
+        LIMIT $${params.length - 1}
+       OFFSET $${params.length}`,
+      params
+    );
+
+    const total = rows.length ? parseInt(rows[0].total_count, 10) : 0;
+    return { data: rows.map(({ total_count, ...r }) => r), total };
+  },
+
+  async countATrier() {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM tbl_reponses WHERE tri_statut = 'a_trier'`
+    );
+    return rows[0].total;
+  },
+
+  // Décision de tri. La condition tri_statut = 'a_trier' rend l'opération atomique : si deux
+  // membres de l'équipe décident en même temps, seul le premier l'emporte — le second reçoit
+  // la décision déjà prise (voir le contrôleur, qui répond alors 409).
+  async decisionTri({ id, decision, commentaire, par, parNom }) {
+    const { rows } = await pool.query(
+      `UPDATE tbl_reponses
+          SET tri_statut      = $2,
+              tri_commentaire = $3,
+              tri_par         = $4,
+              tri_par_nom     = $5,
+              tri_date        = NOW()
+        WHERE id = $1
+          AND tri_statut = 'a_trier'
+        RETURNING id, usager_nom, usager_courriel, reponses, tri_statut, tri_commentaire, tri_par_nom, tri_date`,
+      [id, decision, commentaire, par, parNom]
+    );
+    if (rows[0]) return { updated: rows[0] };
+
+    const { rows: existant } = await pool.query(
+      `SELECT tri_statut, tri_par_nom, tri_date FROM tbl_reponses WHERE id = $1`,
+      [id]
+    );
+    return { updated: null, existant: existant[0] || null };
   },
 
   async insererSuggestionApresApprobation(reponse) {
@@ -385,7 +499,10 @@ const ReponsesModel = {
 
   async findAll({ type = null, statut = null, suivi_acq = null, limit = 20, offset = 0 }) {
     const params     = [];
-    const conditions = [];
+    // Suggestions publiques pas encore triées par l'équipe TechDoc ne concernent pas (ou pas
+    // encore) les ACQ — voir findTri plus bas. Celles refusées par l'équipe sont conservées ici
+    // (lecture seule, Admin/SuperAdmin) pour garder un historique des décisions de tri.
+    const conditions = [`(r.tri_statut IS NULL OR r.tri_statut IN ('accepte', 'refuse'))`];
 
     if (type) {
       params.push(type);
@@ -409,6 +526,7 @@ const ReponsesModel = {
               r.statut_approbation, r.courriel_admin,
               r.date_traitement, r.commentaire_admin,
               r.item_id_cree,
+              r.tri_statut, r.tri_commentaire, r.tri_par_nom, r.tri_date,
               i.suivi_acq,
               -- L'item lié (item_id_cree) peut avoir été supprimé de tbl_items sans que la
               -- réponse le sache : on remonte son existence réelle et son statut_bibliotheque
@@ -687,6 +805,7 @@ const ReponsesModel = {
       `DELETE FROM tbl_reponses
         WHERE id = $1
           AND (statut_approbation IS NULL OR statut_approbation NOT IN ('approuve', 'refuse'))
+          AND tri_statut IS DISTINCT FROM 'refuse'
           AND NOT EXISTS (
             SELECT 1 FROM tbl_items
              WHERE tbl_items.item_id = tbl_reponses.item_id_cree
@@ -794,7 +913,11 @@ const ReponsesModel = {
       conditions.push(`(statut_bibliotheque = 'Soumettre aux ACQ' AND suivi_acq IS NOT NULL)`);
     }
 
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    // Suggestions publiques pas encore triées ou refusées par l'équipe TechDoc : jamais
+    // entrées dans le circuit des demandes, voir findTri.
+    conditions.push(`(tri_statut IS NULL OR tri_statut = 'accepte')`);
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
 
     const baseQuery = `
       FROM (
@@ -802,6 +925,7 @@ const ReponsesModel = {
                 r.id,
                 r.type_formulaire,
                 r."dateA",
+                r.tri_statut,
                 COALESCE(i.titre_document, r.reponses->>'titre_document', r.reponses->'baseData'->>'titre_document') AS titre_document,
                 COALESCE(i.bibliotheque,   r.reponses->>'bibliotheque',   r.reponses->'baseData'->>'bibliotheque')   AS bibliotheque,
                 COALESCE(i.statut_bibliotheque, r.reponses->>'statut_bibliotheque', r.reponses->'baseData'->>'statut_bibliotheque') AS statut_bibliotheque,

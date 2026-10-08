@@ -18,5 +18,6 @@ module.exports = {
     pebTipasaUrl:        '/webhook/peb-tipasa',
     requeteAcqUrl:       '/webhook/requete-accessibilite',
     springerUrl:         '/webhook/springer',
+    triDecisionUrl:      '/webhook/tri-decision',
   },
 };

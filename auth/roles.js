@@ -12,6 +12,7 @@ const GROUPE_BY_ROLE = {
   Admin:  'Administrateur',
   TDM:    'TDM',
   Employe: 'Employé',
+  TechDoc: 'TechDoc',
   Usager: 'Usager',
 };
 

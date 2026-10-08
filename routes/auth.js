@@ -11,8 +11,11 @@ const { requireAuth } = require('../middleware/jwt.middleware');
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 // GET /auth/login → redirige l'usager vers Azure AD
-router.get('/login', (_req, res) => {
-  const state = crypto.randomBytes(16).toString('hex');
+// ?popup=1 : connexion ouverte dans une fenêtre contextuelle par le formulaire public
+// embarqué en iframe (frontend AuthService.loginWithPopup) — le marqueur voyage dans
+// `state` pour que le callback le renvoie au frontend (voir auth/callback.js).
+router.get('/login', (req, res) => {
+  const state = crypto.randomBytes(16).toString('hex') + (req.query.popup === '1' ? '.popup' : '');
   res.redirect(auth.buildAuthUrl(state));
 });
 
@@ -37,7 +40,7 @@ router.get('/me', requireAuth, (req, res) => {
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    SIMULATION LOCALE (dev uniquement)
-   GET /auth/dev-login?role=superadmin|admin|acq|employe|usager
+   GET /auth/dev-login?role=superadmin|admin|acq|techdoc|employe|usager
    → crée un JWT directement, sans passer par Azure AD
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 if (process.env.NODE_ENV !== 'production') {
@@ -46,13 +49,15 @@ if (process.env.NODE_ENV !== 'production') {
     admin:  { sub: 'dev-admin-001',  email: 'admin@udem.dev',  nom: 'Admin',       prenom: 'Système', groupe: 'Administrateur', role: 'Admin' },
     acq:    { sub: 'dev-acq-001',    email: 'acq@udem.dev',    nom: 'TDM',         prenom: 'Agent',   groupe: 'TDM',          role: 'TDM' },
     employe: { sub: 'dev-employe-001', email: 'employe@udem.dev', nom: 'Bibliothèques', prenom: 'Test', groupe: 'Employé',   role: 'Employe' },
+    techdoc: { sub: 'dev-techdoc-001', email: 'techdoc@udem.dev', nom: 'TechDoc', prenom: 'Test', groupe: 'TechDoc', role: 'TechDoc' },
     usager: { sub: 'dev-usager-001', email: 'usager@udem.dev', nom: 'UdeM',        prenom: 'Test',    groupe: 'Usager',       role: 'Usager' },
   };
 
   router.get('/dev-login', (req, res) => {
     const profile = DEV_PROFILES[req.query.role] || DEV_PROFILES.usager;
     const token   = auth.signToken(profile);
-    res.redirect(`${config.urls.frontend}/auth-callback?token=${encodeURIComponent(token)}`);
+    const popup   = req.query.popup === '1' ? '&popup=1' : '';
+    res.redirect(`${config.urls.frontend}/auth-callback?token=${encodeURIComponent(token)}${popup}`);
   });
 }
 

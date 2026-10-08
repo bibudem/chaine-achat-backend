@@ -18,6 +18,7 @@ function extractSuggestionAchatData(specificData = {}) {
     date_requise_cours:           specificData.date_requise_cours           || null,
     note_usager:                  specificData.note_usager                  ?? null,
     techdoc_suggestion_transmise: specificData.techdoc_suggestion_transmise ?? false,
+    techdoc_tri_notes:            specificData.techdoc_tri_notes            ?? null,
     acq_raison_annulation:        specificData.acq_raison_annulation        ?? null,
     acq_isbn:                     specificData.acq_isbn                     ?? null,
     reserve_cours:                specificData.reserve_cours                ?? false,
@@ -47,6 +48,7 @@ async function insertSuggestionAchat(client, itemId, specificData) {
       date_requise_cours,
       note_usager,
       techdoc_suggestion_transmise,
+      techdoc_tri_notes,
       acq_raison_annulation,
       acq_isbn,
       reserve_cours,
@@ -54,7 +56,7 @@ async function insertSuggestionAchat(client, itemId, specificData) {
       bordereau_imprime,
       acq_responsable_courriel
     ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
     )
     ON CONFLICT (item_id) DO UPDATE SET
       auteur                       = EXCLUDED.auteur,
@@ -68,6 +70,7 @@ async function insertSuggestionAchat(client, itemId, specificData) {
       date_requise_cours           = EXCLUDED.date_requise_cours,
       note_usager                  = EXCLUDED.note_usager,
       techdoc_suggestion_transmise = EXCLUDED.techdoc_suggestion_transmise,
+      techdoc_tri_notes            = EXCLUDED.techdoc_tri_notes,
       acq_raison_annulation        = EXCLUDED.acq_raison_annulation,
       acq_isbn                     = EXCLUDED.acq_isbn,
       reserve_cours                = EXCLUDED.reserve_cours,
@@ -90,6 +93,7 @@ async function insertSuggestionAchat(client, itemId, specificData) {
     d.date_requise_cours,
     d.note_usager,
     d.techdoc_suggestion_transmise,
+    d.techdoc_tri_notes,
     d.acq_raison_annulation,
     d.acq_isbn,
     d.reserve_cours,
@@ -121,12 +125,13 @@ async function updateSuggestionAchat(client, itemId, specificData) {
       date_requise_cours           = $10,
       note_usager                  = $11,
       techdoc_suggestion_transmise = $12,
-      acq_raison_annulation        = $13,
-      acq_isbn                     = $14,
-      reserve_cours                = $15,
-      reserve_cours_sigle          = $16,
-      bordereau_imprime            = $17,
-      acq_responsable_courriel     = $18
+      techdoc_tri_notes            = $13,
+      acq_raison_annulation        = $14,
+      acq_isbn                     = $15,
+      reserve_cours                = $16,
+      reserve_cours_sigle          = $17,
+      bordereau_imprime            = $18,
+      acq_responsable_courriel     = $19
     WHERE item_id = $1
     RETURNING *;
   `;
@@ -144,6 +149,7 @@ async function updateSuggestionAchat(client, itemId, specificData) {
     d.date_requise_cours,
     d.note_usager,
     d.techdoc_suggestion_transmise,
+    d.techdoc_tri_notes,
     d.acq_raison_annulation,
     d.acq_isbn,
     d.reserve_cours,
@@ -176,6 +182,7 @@ const GET_FICHE_SUGGESTION_COLUMNS = `
   sa.date_requise_cours,
   sa.note_usager,
   sa.techdoc_suggestion_transmise,
+  sa.techdoc_tri_notes,
   sa.acq_raison_annulation,
   sa.acq_isbn,
   sa.reserve_cours,

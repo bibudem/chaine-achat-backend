@@ -29,6 +29,7 @@ module.exports = {
       pebTipasaUrl:        url(paths.pebTipasaUrl),
       requeteAcqUrl:       url(paths.requeteAcqUrl),
       springerUrl:         url(paths.springerUrl),
+      triDecisionUrl:      url(paths.triDecisionUrl),
     };
   })(),
   jwt: {

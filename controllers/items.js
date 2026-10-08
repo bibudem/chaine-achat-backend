@@ -125,10 +125,21 @@ const itemsController = {
       // 3. Répartition entre plusieurs fonds budgétaires, si l'item en a une (fonds partagés)
       const fondsRepartition = await ItemsFondsModel.getRepartition(itemId);
 
+      // 4. Tri par l'équipe TechDoc (suggestion publique uniquement, /suggestion-public) — la
+      // décision de tri (tri_statut/tri_commentaire/tri_par_nom/tri_date) vit sur tbl_reponses,
+      // pas tbl_items ; absent si l'item ne vient pas de ce circuit (ex. Suggestion d'achat
+      // saisie directement en interne, sans item_id_cree correspondant).
+      const { rows: triRows } = await client.query(
+        `SELECT tri_statut, tri_commentaire, tri_par, tri_par_nom, tri_date
+           FROM tbl_reponses WHERE item_id_cree = $1 LIMIT 1`,
+        [itemId]
+      );
+      const triInfo = triRows[0] || {};
+
       console.log('✅ Item récupéré avec succès');
       res.json({
         success: true,
-        data: { ...item, ...specificData, fonds_repartition: fondsRepartition }
+        data: { ...item, ...specificData, fonds_repartition: fondsRepartition, ...triInfo }
       });
       
     } catch (error) {
