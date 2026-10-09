@@ -246,6 +246,7 @@ async function rapportDetaille(filters = {}, limit = 100, offset = 0) {
       sa.date_requise_cours,
       sa.note_usager,
       sa.techdoc_suggestion_transmise,
+      sa.techdoc_tri_notes,
       sa.acq_raison_annulation,
       sa.acq_isbn
 

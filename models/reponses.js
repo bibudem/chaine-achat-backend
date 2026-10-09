@@ -139,6 +139,7 @@ const ReponsesModel = {
               COALESCE(i.statut_bibliotheque, r.reponses->>'statut_bibliotheque') AS statut_bibliotheque,
               i.suivi_acq,
               i.statut_acq,
+              i.note_acq,
               COUNT(*) OVER() AS total_count
          FROM tbl_reponses r
          LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
@@ -165,18 +166,22 @@ const ReponsesModel = {
   // Décision de tri. La condition tri_statut = 'a_trier' rend l'opération atomique : si deux
   // membres de l'équipe décident en même temps, seul le premier l'emporte — le second reçoit
   // la décision déjà prise (voir le contrôleur, qui répond alors 409).
-  async decisionTri({ id, decision, commentaire, par, parNom }) {
+  async decisionTri({ id, decision, commentaire, par, parNom, techdocSuggestionTransmise, techdocTriNotes }) {
     const { rows } = await pool.query(
       `UPDATE tbl_reponses
           SET tri_statut      = $2,
               tri_commentaire = $3,
               tri_par         = $4,
               tri_par_nom     = $5,
-              tri_date        = NOW()
+              tri_date        = NOW(),
+              reponses        = reponses::jsonb || jsonb_build_object(
+                                   'techdoc_suggestion_transmise', $6::boolean,
+                                   'techdoc_tri_notes', $7::text
+                                 )
         WHERE id = $1
           AND tri_statut = 'a_trier'
         RETURNING id, usager_nom, usager_courriel, reponses, tri_statut, tri_commentaire, tri_par_nom, tri_date`,
-      [id, decision, commentaire, par, parNom]
+      [id, decision, commentaire, par, parNom, !!techdocSuggestionTransmise, techdocTriNotes || null]
     );
     if (rows[0]) return { updated: rows[0] };
 

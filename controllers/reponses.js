@@ -190,6 +190,11 @@ const ReponsesController = {
     const { id } = req.params;
     const decision    = req.body?.decision;
     const commentaire = (req.body?.commentaire || '').trim() || null;
+    // Suivi interne de l'équipe TechDoc — saisi en même temps que la décision de tri (voir
+    // tri-suggestions.component.ts), reporté dans tbl_reponses.reponses pour suivre la
+    // suggestion même si elle n'est pas (encore) matérialisée en item.
+    const techdocSuggestionTransmise = !!req.body?.techdoc_suggestion_transmise;
+    const techdocTriNotes            = (req.body?.techdoc_tri_notes || '').trim() || null;
 
     if (!['accepte', 'refuse'].includes(decision)) {
       return res.status(400).json({ error: "Décision invalide (attendu : 'accepte' ou 'refuse')." });
@@ -200,11 +205,15 @@ const ReponsesController = {
     if (commentaire && commentaire.length > 2000) {
       return res.status(400).json({ error: 'Le commentaire ne doit pas dépasser 2000 caractères.' });
     }
+    if (techdocTriNotes && techdocTriNotes.length > 2000) {
+      return res.status(400).json({ error: 'Les notes TechDoc ne doivent pas dépasser 2000 caractères.' });
+    }
 
     try {
       const parNom = `${req.user.prenom || ''} ${req.user.nom || ''}`.trim() || req.user.email;
       const { updated, existant } = await ReponsesModel.decisionTri({
         id, decision, commentaire, par: req.user.email, parNom,
+        techdocSuggestionTransmise, techdocTriNotes,
       });
 
       if (!updated) {

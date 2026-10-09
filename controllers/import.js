@@ -732,7 +732,7 @@ const IMPORT_CONFIGS = {
       'acq_isbn', 'date_requise_cours',
       'reserve_cours', 'reserve_cours_sigle',
       'bordereau_imprime', 'aviser_reservation', 'aviser_reception',
-      'note_usager', 'techdoc_suggestion_transmise',
+      'note_usager', 'techdoc_suggestion_transmise', 'techdoc_tri_notes',
       'acq_responsable_courriel', 'acq_raison_annulation'
     ],
     buildSpecificData: (row) => ({
@@ -751,6 +751,7 @@ const IMPORT_CONFIGS = {
       aviser_reception:             parseBool(row['aviser_reception']),
       note_usager:                  row['note_usager']                  || null,
       techdoc_suggestion_transmise: parseBool(row['techdoc_suggestion_transmise']),
+      techdoc_tri_notes:            row['techdoc_tri_notes']            || null,
       acq_responsable_courriel:     row['acq_responsable_courriel']     || null,
       acq_raison_annulation:        row['acq_raison_annulation']        || null,
     })
