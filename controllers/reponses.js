@@ -2,6 +2,7 @@ const ReponsesModel = require('../models/reponses');
 const axios         = require('axios');
 const { publicError } = require('../util/errors');
 const config         = require('../config/config');
+const UtilisateursModel = require('../models/utilisateurs');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:4200';
 
@@ -13,6 +14,7 @@ const N8N_PEB_TIPASA_URL          = config.n8n.pebTipasaUrl;
 const N8N_REQUETE_ACQ_URL         = config.n8n.requeteAcqUrl;
 const N8N_SPRINGER_URL            = config.n8n.springerUrl;
 const N8N_TRI_DECISION_URL        = config.n8n.triDecisionUrl;
+const N8N_SUGGESTION_PUBLIQUE_URL = config.n8n.suggestionPubliqueUrl;
 
 function redirect(res, url) {
   const decodedUrl = decodeURIComponent(url);
@@ -20,8 +22,13 @@ function redirect(res, url) {
   return res.end();
 }
 
+// Adresse du frontend de l'environnement courant (local ou production), jointe à chaque appel
+// n8n : le même workflow sert aux deux environnements, et les liens de ses courriels
+// (« Traiter la demande », file de tri…) doivent pointer vers la bonne application.
+const N8N_APP_URL = config.urls.frontend;
+
 function _notifierN8n(url, logKey, rowId, payload) {
-  axios.post(url, payload)
+  axios.post(url, { ...payload, app_url: N8N_APP_URL })
     .then(() => console.log(`✅ [${logKey}] n8n notifié — #${rowId}`))
     .catch(err => {
       console.error(`❌ [${logKey}] n8n non joignable:`, err.message);
@@ -106,7 +113,8 @@ const ReponsesController = {
         usager_nom,
         usager_courriel,
         usager_statut,
-        reponses
+        reponses,
+        app_url:         N8N_APP_URL
       })
       .then(()  => console.log(`✅ [suggestion] n8n notifié — #${row.id}`))
       .catch(err => console.warn(`⚠️  [suggestion] n8n non joignable:`, err.message));
@@ -152,6 +160,23 @@ const ReponsesController = {
           statut_bibliotheque: 'Saisie en cours - En attente',
         }
       });
+
+      // n8n /suggestion-publique (fire-and-forget) : accusé de réception au demandeur +
+      // notification à l'équipe TechDoc. Pas le webhook /suggestion, qui écrit aux ACQ — ils
+      // ne sont concernés qu'une fois la suggestion acceptée puis soumise.
+      UtilisateursModel.courrielsParRole('TechDoc')
+        .catch(err => { console.error('[suggestion-publique] courriels TechDoc:', err.message); return []; })
+        .then(techdocCourriels => _notifierN8n(N8N_SUGGESTION_PUBLIQUE_URL, 'suggestion-publique', row.id, {
+          id:               row.id,
+          type_formulaire:  "Suggestion d'achat - Usager",
+          source:           'publique',
+          usager_nom,
+          usager_courriel,
+          usager_statut,
+          reponses,
+          techdoc_courriels: techdocCourriels,
+        }));
+
       return res.status(201).json({ message: 'Suggestion enregistrée.', id: row.id, dateA: row.dateA });
     } catch (err) {
       console.error('[suggestion-publique] create:', err);
@@ -312,7 +337,8 @@ const ReponsesController = {
         usager_courriel,
         usager_statut,
         baseData,
-        specificData
+        specificData,
+        app_url:         N8N_APP_URL
       };
 
       console.log(`📤 [nouvel-achat] Envoi à n8n — #${row.id}`);

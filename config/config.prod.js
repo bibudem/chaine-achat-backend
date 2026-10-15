@@ -20,5 +20,6 @@ module.exports = {
     requeteAcqUrl:       '/webhook/requete-accessibilite',
     springerUrl:         '/webhook/springer',
     triDecisionUrl:      '/webhook/tri-decision',
+    suggestionPubliqueUrl: '/webhook/suggestion-publique',
   },
 };

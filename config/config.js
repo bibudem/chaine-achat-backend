@@ -30,6 +30,7 @@ module.exports = {
       requeteAcqUrl:       url(paths.requeteAcqUrl),
       springerUrl:         url(paths.springerUrl),
       triDecisionUrl:      url(paths.triDecisionUrl),
+      suggestionPubliqueUrl: url(paths.suggestionPubliqueUrl),
     };
   })(),
   jwt: {

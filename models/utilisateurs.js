@@ -41,6 +41,16 @@ const UtilisateursModel = {
     return rows;
   },
 
+  // Courriels de tous les utilisateurs d'un rôle — ex. l'équipe TechDoc, avisée par courriel
+  // de chaque nouvelle suggestion publique (voir ReponsesController.createSuggestionPublique).
+  async courrielsParRole(role) {
+    const { rows } = await pool.query(
+      `SELECT email FROM tbl_utilisateurs WHERE role = $1 AND email IS NOT NULL AND email <> '' ORDER BY email`,
+      [role]
+    );
+    return rows.map(r => r.email);
+  },
+
   // Pré-provisionner un usager (ex. Admin/TDM) avant même son premier login Azure AD.
   async create({ email, nom, prenom, role }) {
     const { rows } = await pool.query(

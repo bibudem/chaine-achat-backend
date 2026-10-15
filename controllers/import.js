@@ -20,7 +20,7 @@ const TYPE_TABLE_MAP = {
 let columnMaxLengthsCache = null;
 async function getColumnMaxLengths() {
   if (columnMaxLengthsCache) return columnMaxLengthsCache;
-  const tables = ['tbl_items', ...Object.values(TYPE_TABLE_MAP)];
+  const tables = ['tbl_items', 'tbl_items_fonds', ...Object.values(TYPE_TABLE_MAP)];
   const { rows } = await pool.query(
     `SELECT table_name, column_name, character_maximum_length
      FROM information_schema.columns
@@ -51,20 +51,43 @@ async function messageErreurClair(err, data, tableName) {
       return 'Format invalide pour une valeur (nombre, date ou texte attendu).';
     case '22003':
       return 'Un nombre est trop grand pour son champ.';
-    case '22001': { // valeur trop longue — on identifie le champ fautif via les longueurs max
+    case '22001': { // valeur trop longue — on liste TOUS les champs fautifs via les longueurs max
       const limits = (await getColumnMaxLengths())[tableName] || {};
-      const champFautif = Object.keys(data || {}).find(col => {
+      const fautifs = Object.keys(data || {}).flatMap(col => {
         const max = limits[col];
         const val = data[col];
-        return max != null && val != null && String(val).length > max;
+        if (max == null || val == null) return [];
+        // Même sérialisation que le pilote pg : un objet part en JSON, pas en "[object Object]".
+        const texte = typeof val === 'object' && !(val instanceof Date) ? JSON.stringify(val) : String(val);
+        return texte.length > max ? [`« ${col} » (${texte.length} caractères, max ${max})`] : [];
       });
-      return champFautif
-        ? `Champ « ${champFautif} » trop long (max ${limits[champFautif]} caractères).`
-        : 'Une valeur est trop longue pour son champ.';
+      if (fautifs.length) {
+        return `Valeur trop longue : ${fautifs.join(', ')}.`;
+      }
+      // Champ non identifié : pg donne au moins la limite dépassée (« character varying(50) »).
+      const limite = /varying\((\d+)\)/.exec(err.message || '');
+      return limite
+        ? `Une valeur dépasse la limite de ${limite[1]} caractères (table ${tableName}).`
+        : `Une valeur est trop longue pour son champ (table ${tableName}).`;
     }
     default:
       return err.message;
   }
+}
+
+// ==================== HELPER : VALEUR D'UNE CELLULE EXCEL ====================
+// ExcelJS renvoie certaines cellules sous forme d'objet : formule ({ formula, result }), lien
+// hypertexte ({ text, hyperlink }), texte enrichi ({ richText: [{ text }] }), erreur
+// ({ error: '#N/A' }). Non converti, l'objet partait tel quel au pilote pg, qui l'écrit en
+// JSON — beaucoup plus long que le texte visible (ex. une URL en lien hypertexte, doublée),
+// d'où des « valeur trop longue » sur des cellules d'apparence normale.
+function valeurCellule(value) {
+  if (value == null || typeof value !== 'object' || value instanceof Date) return value;
+  if ('result' in value)             return valeurCellule(value.result ?? null);
+  if (Array.isArray(value.richText)) return value.richText.map(r => r.text ?? '').join('');
+  if ('text' in value)               return valeurCellule(value.text);   // le texte d'un lien peut lui-même être enrichi
+  if ('error' in value)              return null;
+  return value;
 }
 
 // ==================== HELPER : LIRE EXCEL DEPUIS BUFFER ====================
@@ -87,10 +110,7 @@ async function bufferToRows(buffer) {
       for (let i = 1; i < headers.length; i++) {
         const header = headers[i];
         if (!header) continue;
-        let value = values[i] ?? null;
-        if (value != null && typeof value === 'object' && 'result' in value) {
-          value = value.result ?? null;
-        }
+        let value = valeurCellule(values[i] ?? null);
         if (value instanceof Date) {
           value = value.toISOString().split('T')[0];
         }
@@ -424,7 +444,19 @@ async function upsertRow(client, row, formulaireType, config) {
 
   // Fonds partagés : ne fait rien si fondsRepartition est undefined (pas de partage détecté
   // dans cette ligne) — voir ItemsFondsModel.remplacerRepartition.
-  await ItemsFondsModel.remplacerRepartition(client, itemId, fondsRepartition);
+  try {
+    await ItemsFondsModel.remplacerRepartition(client, itemId, fondsRepartition);
+  } catch (err) {
+    // Plusieurs lignes de fonds : on garde, par colonne, la valeur la plus longue — c'est
+    // elle qui dépasse, le message peut alors nommer la colonne.
+    const plusLongues = {};
+    for (const ligne of fondsRepartition || []) {
+      for (const [col, val] of Object.entries(ligne || {})) {
+        if (val != null && String(val).length > String(plusLongues[col] ?? '').length) plusLongues[col] = val;
+      }
+    }
+    throw new Error(await messageErreurClair(err, plusLongues, 'tbl_items_fonds'));
+  }
 
   return { itemId, updated: !!existingId };
 }
