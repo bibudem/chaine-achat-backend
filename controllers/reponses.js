@@ -3,6 +3,7 @@ const axios         = require('axios');
 const { publicError } = require('../util/errors');
 const config         = require('../config/config');
 const UtilisateursModel = require('../models/utilisateurs');
+const { notifierEvenement } = require('../util/notifications-n8n');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:4200';
 
@@ -69,7 +70,7 @@ async function _creerFormulaire(req, res, typeFormulaire, n8nUrl, logKey) {
     const { baseData = {}, specificData = {} } = reponses;
     const itemId = await _materialiserItem(row.id, baseData, logKey);
     _notifierN8n(n8nUrl, logKey, row.id, {
-      id: row.id, type_formulaire: typeFormulaire,
+      id: row.id, item_id: itemId, type_formulaire: typeFormulaire,
       usager_nom, usager_courriel, usager_statut, baseData, specificData
     });
     return res.status(201).json({ message: `${typeFormulaire} enregistré.`, id: row.id, dateA: row.dateA, item_id: itemId });
@@ -109,6 +110,7 @@ const ReponsesController = {
       // Notifier n8n /suggestion (fire-and-forget)
       axios.post(N8N_SUGGESTION_URL, {
         id:              row.id,
+        item_id:         itemId,
         type_formulaire: "Suggestion d'achat - Usager",
         usager_nom,
         usager_courriel,
@@ -332,6 +334,7 @@ const ReponsesController = {
       // Notifier n8n /nouvel-achat (fire-and-forget)
       const n8nPayload = {
         id:              row.id,
+        item_id:         itemId,
         type_formulaire: 'Nouvel achat unique',
         usager_nom,
         usager_courriel,
@@ -655,6 +658,9 @@ const ReponsesController = {
     const { reponses } = req.body;
     if (!reponses) return res.status(400).json({ error: 'Corps requis : { reponses }' });
     try {
+      // État avant modification : sert à détecter qu'une suggestion publique acceptée vient
+      // d'être soumise aux ACQ (item pas encore créé avant cet appel).
+      const avant = await ReponsesModel.findById(id);
       const updated = await ReponsesModel.updateReponses(id, reponses);
       if (!updated) return res.status(403).json({ error: 'Modification non autorisée ou demande introuvable.' });
       // Une demande déjà existante (brouillon) qu'on bascule à "Soumettre aux ACQ" lors d'une
@@ -662,6 +668,23 @@ const ReponsesController = {
       // Suggestion d'achat est en format plat (pas de reponses.baseData) — statut_bibliotheque
       // est alors directement sur reponses.
       const itemId = await _materialiserItem(id, reponses.baseData || reponses, 'patch-reponses');
+
+      // Suggestion publique acceptée par TechDoc, soumise aux ACQ à l'instant : les ACQ en sont
+      // avisés (BAL ACQ). Ils n'avaient reçu aucun courriel à l'envoi initial — la suggestion
+      // passait d'abord par le tri.
+      if (itemId && avant && avant.tri_statut === 'accepte' && !avant.item_id_cree) {
+        notifierEvenement('suggestion-soumise-acq', id, {
+          id:              Number(id),
+          item_id:         itemId,
+          type_formulaire: avant.type_formulaire,
+          usager_nom:      avant.usager_nom,
+          usager_courriel: avant.usager_courriel,
+          usager_statut:   avant.usager_statut,
+          tri_par_nom:     avant.tri_par_nom,
+          reponses,
+        });
+      }
+
       res.json({ success: true, item_id: itemId });
     } catch (err) {
       console.error('[patchReponses]', err);

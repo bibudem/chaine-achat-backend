@@ -31,6 +31,7 @@ module.exports = {
       springerUrl:         url(paths.springerUrl),
       triDecisionUrl:      url(paths.triDecisionUrl),
       suggestionPubliqueUrl: url(paths.suggestionPubliqueUrl),
+      notificationsUrl:    url(paths.notificationsUrl),
     };
   })(),
   jwt: {

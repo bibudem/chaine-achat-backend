@@ -3,6 +3,7 @@ const PiecesJointesModel = require('../models/pieces-jointes');
 const ItemsFondsModel = require('../models/items-fonds');
 const { filterToTableColumns } = require('../util/db-columns');
 const { publicError } = require('../util/errors');
+const { notifierNoticeTdmSiNouvelle } = require('../util/notifications-n8n');
 
 console.log('🎯 Chargement du contrôleur items...');
 
@@ -79,7 +80,11 @@ const itemsController = {
       }
 
       await client.query('COMMIT');
-      
+
+      // Item créé directement depuis la page de décision ACQ, déjà traité avec « Création de
+      // notice TDM » = Oui : la BAL TDM est avisée (voir putItems).
+      notifierNoticeTdmSiNouvelle(null, newItem);
+
       res.status(201).json({
         success: true,
         message: 'Item créé avec succès',
@@ -129,8 +134,15 @@ const itemsController = {
       // décision de tri (tri_statut/tri_commentaire/tri_par_nom/tri_date) vit sur tbl_reponses,
       // pas tbl_items ; absent si l'item ne vient pas de ce circuit (ex. Suggestion d'achat
       // saisie directement en interne, sans item_id_cree correspondant).
+      // + personne qui a saisi la demande (session au moment de l'envoi du formulaire) :
+      // destinataire du courriel de fin de traitement (« Enregistrer et envoyer courriel »).
+      // Préfixe saisie_par_ pour ne pas écraser usager_nom/usager_courriel des données
+      // spécifiques (ex. « Nom de l'usager » de la suggestion d'achat).
       const { rows: triRows } = await client.query(
-        `SELECT tri_statut, tri_commentaire, tri_par, tri_par_nom, tri_date
+        `SELECT tri_statut, tri_commentaire, tri_par, tri_par_nom, tri_date,
+                id              AS reponse_id,
+                usager_nom      AS saisie_par_nom,
+                usager_courriel AS saisie_par_courriel
            FROM tbl_reponses WHERE item_id_cree = $1 LIMIT 1`,
         [itemId]
       );
@@ -177,6 +189,13 @@ const itemsController = {
       // reste explicitement bloqué ici par défense en profondeur.
       const safeBaseData = await filterToTableColumns('tbl_items', cleanedBaseData, ['item_id']);
 
+      // État avant modification (verrouillé jusqu'au COMMIT) : sert à détecter le passage à
+      // « notice TDM requise » — voir notifierNoticeTdmSiNouvelle plus bas.
+      const { rows: [avant] } = await client.query(
+        'SELECT creation_notice_dtdm, suivi_acq FROM tbl_items WHERE item_id = $1 FOR UPDATE',
+        [itemId]
+      );
+
       // 1. Mettre à jour tbl_items
       const entries = Object.entries(safeBaseData);
       
@@ -219,7 +238,11 @@ const itemsController = {
       
       // 3. Récupérer l'item mis à jour
       const updatedItem = await client.query('SELECT * FROM tbl_items WHERE item_id = $1', [itemId]);
-      
+
+      // Demande traitée par les ACQ avec « Création de notice TDM » = Oui : la BAL TDM est avisée
+      // (une seule fois, au passage à cet état).
+      notifierNoticeTdmSiNouvelle(avant, updatedItem.rows[0]);
+
       console.log('Item mis à jour avec succès');
       res.json({
         success: true,
