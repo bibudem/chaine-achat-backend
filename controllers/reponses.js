@@ -199,6 +199,7 @@ const ReponsesController = {
       const [result, aTrier] = await Promise.all([
         ReponsesModel.findTri({
           statut, limit, offset,
+          ordre: ['date_desc', 'date_asc'].includes(req.query.ordre) ? req.query.ordre : null,
           search: req.query.search || null,
         }),
         ReponsesModel.countATrier(),

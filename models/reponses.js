@@ -99,7 +99,9 @@ const ReponsesModel = {
   // premier arrivé, premier servi), puis acceptées mais pas encore complétées, puis
   // soumises aux ACQ, puis refusées (plus récente décision en premier dans chaque groupe).
   // `statut` filtre sur l'une de ces quatre catégories ; sans lui, tout le cycle est retourné.
-  async findTri({ statut = null, search = null, limit = 20, offset = 0 } = {}) {
+  // `ordre` ('date_desc' | 'date_asc') remplace cet ordre par un tri sur la date affichée
+  // (date du tri, ou date de réception pour une suggestion pas encore triée).
+  async findTri({ statut = null, search = null, ordre = null, limit = 20, offset = 0 } = {}) {
     const params     = [];
     const conditions = [`r.tri_statut IN ('a_trier', 'accepte', 'refuse')`];
     const nonSoumiseSql = `COALESCE(i.statut_bibliotheque, r.reponses->>'statut_bibliotheque') IS DISTINCT FROM 'Soumettre aux ACQ'`;
@@ -130,6 +132,12 @@ const ReponsesModel = {
          WHEN r.tri_statut = 'accepte' THEN 2
          ELSE 3
        END`;
+    const dateAffichee = `COALESCE(r.tri_date, r."dateA")`;
+    const orderBy = ordre === 'date_desc' ? `${dateAffichee} DESC, r.id DESC`
+                  : ordre === 'date_asc'  ? `${dateAffichee} ASC, r.id ASC`
+                  : `${priorite} ASC,
+                 CASE WHEN r.tri_statut = 'a_trier' THEN r."dateA" END ASC,
+                 CASE WHEN r.tri_statut != 'a_trier' THEN ${dateAffichee} END DESC`;
     params.push(limit, offset);
 
     const { rows } = await pool.query(
@@ -144,9 +152,7 @@ const ReponsesModel = {
          FROM tbl_reponses r
          LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
          ${where}
-        ORDER BY ${priorite} ASC,
-                 CASE WHEN r.tri_statut = 'a_trier' THEN r."dateA" END ASC,
-                 CASE WHEN r.tri_statut != 'a_trier' THEN COALESCE(r.tri_date, r."dateA") END DESC
+        ORDER BY ${orderBy}
         LIMIT $${params.length - 1}
        OFFSET $${params.length}`,
       params
