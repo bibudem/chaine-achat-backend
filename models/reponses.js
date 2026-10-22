@@ -198,6 +198,17 @@ const ReponsesModel = {
     return { updated: null, existant: existant[0] || null };
   },
 
+  async majTechdocTransmise(id, transmise) {
+    const { rows } = await pool.query(
+      `UPDATE tbl_reponses
+          SET reponses = reponses::jsonb || jsonb_build_object('techdoc_suggestion_transmise', $2::boolean)
+        WHERE id = $1 AND type_formulaire = 'Suggestion d''achat - Usager'
+        RETURNING id, (reponses::jsonb ->> 'techdoc_suggestion_transmise')::boolean AS techdoc_suggestion_transmise`,
+      [id, !!transmise]
+    );
+    return rows[0] || null;
+  },
+
   async insererSuggestionApresApprobation(reponse) {
     const client = await pool.connect();
     try {

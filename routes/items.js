@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const PiecesJointesController = require('../controllers/pieces-jointes');
+const { requireAuth, requireRole } = require('../middleware/jwt.middleware');
 
 console.log('🛣️ Initialisation des routes items...');
 
@@ -54,6 +55,10 @@ router.get('/fiche/:id', itemsController.consulterItems);
 
 // UPDATE - Modifier un item
 router.put('/save/:id', itemsController.putItems);
+
+// TechDoc Tri — « Suggestion d'achat transmise en bibliothèque » (étape de fin, Admin/SuperAdmin)
+router.put('/:id/techdoc-transmise', requireAuth, requireRole('Admin', 'SuperAdmin'),
+  (req, res) => itemsController.majTechdocTransmise(req, res));
 
 // DELETE - Supprimer un item
 router.delete('/delete/:id', itemsController.deleteItems);

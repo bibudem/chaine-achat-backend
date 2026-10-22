@@ -262,6 +262,45 @@ const itemsController = {
     }
   },
 
+  // ==================== TECHDOC TRI ====================
+  // PUT /items/:id/techdoc-transmise — étape de fin d'une suggestion d'achat (onglet TechDoc
+  // Tri de la page de décision, Admin/SuperAdmin). Reportée aussi dans tbl_reponses.reponses
+  // pour que la fiche réponse d'origine reste cohérente.
+  majTechdocTransmise: async (req, res) => {
+    const itemId    = Number(req.params.id);
+    const transmise = req.body?.techdoc_suggestion_transmise;
+    if (!Number.isInteger(itemId) || typeof transmise !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'Paramètres invalides.' });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        `UPDATE tbl_suggestion_achat SET techdoc_suggestion_transmise = $2
+          WHERE item_id = $1 RETURNING item_id, techdoc_suggestion_transmise`,
+        [itemId, transmise]
+      );
+      if (!rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ success: false, error: "Suggestion d'achat introuvable." });
+      }
+      await client.query(
+        `UPDATE tbl_reponses
+            SET reponses = reponses::jsonb || jsonb_build_object('techdoc_suggestion_transmise', $2::boolean)
+          WHERE item_id_cree = $1`,
+        [itemId, transmise]
+      );
+      await client.query('COMMIT');
+      return res.json({ success: true, data: rows[0] });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[techdoc] majTechdocTransmise:', error);
+      return res.status(500).json({ success: false, error: publicError(error) });
+    } finally {
+      client.release();
+    }
+  },
+
   // ==================== DELETE ====================
   deleteItems: async (req, res) => {
     const client = await pool.connect();

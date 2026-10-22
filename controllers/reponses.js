@@ -5,6 +5,9 @@ const config         = require('../config/config');
 const UtilisateursModel = require('../models/utilisateurs');
 const { notifierEvenement } = require('../util/notifications-n8n');
 
+// Statut par défaut d'une suggestion envoyée par la communauté UdeM (/suggestion-public).
+const STATUT_SUGGESTION_RECUE = 'Suggestion d’achat reçue';
+
 const APP_URL = process.env.APP_URL || 'http://localhost:4200';
 
 const N8N_SUGGESTION_URL          = config.n8n.suggestionUrl;
@@ -159,7 +162,9 @@ const ReponsesController = {
           demandeur:           usager_nom,
           usager_nom,
           usager_courriel,
-          statut_bibliotheque: 'Saisie en cours - En attente',
+          // Statut par défaut d'une suggestion publique, en attente du tri TechDoc (même valeur
+          // que STATUT_SUGGESTION_RECUE côté frontend, lib/ListeChoixOptions.ts).
+          statut_bibliotheque: STATUT_SUGGESTION_RECUE,
         }
       });
 
@@ -269,6 +274,24 @@ const ReponsesController = {
     } catch (err) {
       console.error('[tri] decisionTri:', err);
       return res.status(500).json({ error: "Erreur lors de l'enregistrement de la décision." });
+    }
+  },
+
+  // PUT /reponses/:id/techdoc-transmise — étape de fin d'une suggestion pas encore
+  // matérialisée en item (sinon PUT /items/:id/techdoc-transmise). Admin/SuperAdmin.
+  async majTechdocTransmise(req, res) {
+    const id        = Number(req.params.id);
+    const transmise = req.body?.techdoc_suggestion_transmise;
+    if (!Number.isInteger(id) || typeof transmise !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'Paramètres invalides.' });
+    }
+    try {
+      const updated = await ReponsesModel.majTechdocTransmise(id, transmise);
+      if (!updated) return res.status(404).json({ success: false, error: 'Suggestion introuvable.' });
+      return res.json({ success: true, data: updated });
+    } catch (err) {
+      console.error('[techdoc] majTechdocTransmise:', err);
+      return res.status(500).json({ success: false, error: "Erreur lors de l'enregistrement." });
     }
   },
 
