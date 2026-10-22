@@ -83,7 +83,7 @@ const itemsController = {
 
       // Item créé directement depuis la page de décision ACQ, déjà traité avec « Création de
       // notice TDM » = Oui : la BAL TDM est avisée (voir putItems).
-      notifierNoticeTdmSiNouvelle(null, newItem);
+      await notifierNoticeTdmSiNouvelle(null, newItem);
 
       res.status(201).json({
         success: true,
@@ -241,7 +241,7 @@ const itemsController = {
 
       // Demande traitée par les ACQ avec « Création de notice TDM » = Oui : la BAL TDM est avisée
       // (une seule fois, au passage à cet état).
-      notifierNoticeTdmSiNouvelle(avant, updatedItem.rows[0]);
+      await notifierNoticeTdmSiNouvelle(avant, updatedItem.rows[0]);
 
       console.log('Item mis à jour avec succès');
       res.json({

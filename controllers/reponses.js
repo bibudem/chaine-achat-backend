@@ -1,9 +1,8 @@
 const ReponsesModel = require('../models/reponses');
-const axios         = require('axios');
 const { publicError } = require('../util/errors');
 const config         = require('../config/config');
 const UtilisateursModel = require('../models/utilisateurs');
-const { notifierEvenement } = require('../util/notifications-n8n');
+const { posterN8n, notifierEvenement } = require('../util/notifications-n8n');
 
 // Statut par défaut d'une suggestion envoyée par la communauté UdeM (/suggestion-public).
 const STATUT_SUGGESTION_RECUE = 'Suggestion d’achat reçue';
@@ -24,20 +23,6 @@ function redirect(res, url) {
   const decodedUrl = decodeURIComponent(url);
   res.writeHead(302, { Location: decodedUrl });
   return res.end();
-}
-
-// Adresse du frontend de l'environnement courant (local ou production), jointe à chaque appel
-// n8n : le même workflow sert aux deux environnements, et les liens de ses courriels
-// (« Traiter la demande », file de tri…) doivent pointer vers la bonne application.
-const N8N_APP_URL = config.urls.frontend;
-
-function _notifierN8n(url, logKey, rowId, payload) {
-  axios.post(url, { ...payload, app_url: N8N_APP_URL })
-    .then(() => console.log(`✅ [${logKey}] n8n notifié — #${rowId}`))
-    .catch(err => {
-      console.error(`❌ [${logKey}] n8n non joignable:`, err.message);
-      if (err.response) console.error(`   Status: ${err.response.status}`);
-    });
 }
 
 // Matérialise immédiatement l'item dans tbl_items (au lieu d'attendre l'ouverture de la
@@ -72,7 +57,7 @@ async function _creerFormulaire(req, res, typeFormulaire, n8nUrl, logKey) {
     });
     const { baseData = {}, specificData = {} } = reponses;
     const itemId = await _materialiserItem(row.id, baseData, logKey);
-    _notifierN8n(n8nUrl, logKey, row.id, {
+    await posterN8n(n8nUrl, logKey, row.id, {
       id: row.id, item_id: itemId, type_formulaire: typeFormulaire,
       usager_nom, usager_courriel, usager_statut, baseData, specificData
     });
@@ -110,19 +95,16 @@ const ReponsesController = {
       // "Soumettre aux ACQ" est déjà choisi.
       const itemId = await _materialiserItem(row.id, reponses, 'suggestion');
 
-      // Notifier n8n /suggestion (fire-and-forget)
-      axios.post(N8N_SUGGESTION_URL, {
+      // Notifier n8n /suggestion (attendu : voir posterN8n)
+      await posterN8n(N8N_SUGGESTION_URL, 'suggestion', row.id, {
         id:              row.id,
         item_id:         itemId,
         type_formulaire: "Suggestion d'achat - Usager",
         usager_nom,
         usager_courriel,
         usager_statut,
-        reponses,
-        app_url:         N8N_APP_URL
-      })
-      .then(()  => console.log(`✅ [suggestion] n8n notifié — #${row.id}`))
-      .catch(err => console.warn(`⚠️  [suggestion] n8n non joignable:`, err.message));
+        reponses
+      });
 
       return res.status(201).json({
         message: 'Suggestion enregistrée.',
@@ -168,21 +150,21 @@ const ReponsesController = {
         }
       });
 
-      // n8n /suggestion-publique (fire-and-forget) : accusé de réception au demandeur +
+      // n8n /suggestion-publique (attendu : voir posterN8n) : accusé de réception au demandeur +
       // notification à l'équipe TechDoc. Pas le webhook /suggestion, qui écrit aux ACQ — ils
       // ne sont concernés qu'une fois la suggestion acceptée puis soumise.
-      UtilisateursModel.courrielsParRole('TechDoc')
-        .catch(err => { console.error('[suggestion-publique] courriels TechDoc:', err.message); return []; })
-        .then(techdocCourriels => _notifierN8n(N8N_SUGGESTION_PUBLIQUE_URL, 'suggestion-publique', row.id, {
-          id:               row.id,
-          type_formulaire:  "Suggestion d'achat - Usager",
-          source:           'publique',
-          usager_nom,
-          usager_courriel,
-          usager_statut,
-          reponses,
-          techdoc_courriels: techdocCourriels,
-        }));
+      const techdocCourriels = await UtilisateursModel.courrielsParRole('TechDoc')
+        .catch(err => { console.error('[suggestion-publique] courriels TechDoc:', err.message); return []; });
+      await posterN8n(N8N_SUGGESTION_PUBLIQUE_URL, 'suggestion-publique', row.id, {
+        id:               row.id,
+        type_formulaire:  "Suggestion d'achat - Usager",
+        source:           'publique',
+        usager_nom,
+        usager_courriel,
+        usager_statut,
+        reponses,
+        techdoc_courriels: techdocCourriels,
+      });
 
       return res.status(201).json({ message: 'Suggestion enregistrée.', id: row.id, dateA: row.dateA });
     } catch (err) {
@@ -259,7 +241,7 @@ const ReponsesController = {
       }
 
       const data = typeof updated.reponses === 'string' ? JSON.parse(updated.reponses) : (updated.reponses || {});
-      _notifierN8n(N8N_TRI_DECISION_URL, 'tri-decision', updated.id, {
+      await posterN8n(N8N_TRI_DECISION_URL, 'tri-decision', updated.id, {
         reponse_id:      updated.id,
         type_formulaire: "Suggestion d'achat - Usager",
         decision,
@@ -355,8 +337,8 @@ const ReponsesController = {
 
       const itemId = await _materialiserItem(row.id, baseData, 'nouvel-achat');
 
-      // Notifier n8n /nouvel-achat (fire-and-forget)
-      const n8nPayload = {
+      // Notifier n8n /nouvel-achat (attendu : voir posterN8n)
+      await posterN8n(N8N_NOUVEL_ACHAT_URL, 'nouvel-achat', row.id, {
         id:              row.id,
         item_id:         itemId,
         type_formulaire: 'Nouvel achat unique',
@@ -364,26 +346,7 @@ const ReponsesController = {
         usager_courriel,
         usager_statut,
         baseData,
-        specificData,
-        app_url:         N8N_APP_URL
-      };
-
-      console.log(`📤 [nouvel-achat] Envoi à n8n — #${row.id}`);
-      console.log(`   Payload:`, JSON.stringify(n8nPayload, null, 2));
-
-      axios.post(N8N_NOUVEL_ACHAT_URL, n8nPayload)
-      .then(() => {
-        console.log(`✅ [nouvel-achat] n8n notifié — #${row.id}`);
-        console.log(`   baseData keys:`, Object.keys(baseData));
-        console.log(`   specificData keys:`, Object.keys(specificData));
-      })
-      .catch(err => {
-        console.error(`❌ [nouvel-achat] n8n non joignable:`, err.message);
-        console.error(`   URL: ${N8N_NOUVEL_ACHAT_URL}`);
-        if (err.response) {
-          console.error(`   Status: ${err.response.status}`);
-          console.error(`   Response:`, err.response.data);
-        }
+        specificData
       });
 
       return res.status(201).json({
@@ -697,7 +660,7 @@ const ReponsesController = {
       // avisés (BAL ACQ). Ils n'avaient reçu aucun courriel à l'envoi initial — la suggestion
       // passait d'abord par le tri.
       if (itemId && avant && avant.tri_statut === 'accepte' && !avant.item_id_cree) {
-        notifierEvenement('suggestion-soumise-acq', id, {
+        await notifierEvenement('suggestion-soumise-acq', id, {
           id:              Number(id),
           item_id:         itemId,
           type_formulaire: avant.type_formulaire,
