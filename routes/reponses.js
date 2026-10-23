@@ -85,7 +85,7 @@ router.get('/profil',               ReponsesController.getByEmail);
 router.get('/public',               ReponsesController.getAllPublic);
 router.get('/',                     ReponsesController.getAll);
 router.get('/:id',                  ReponsesController.getById);
-router.patch('/:id',                ReponsesController.patchReponses);
+router.patch('/:id',                requireAuth, ReponsesController.patchReponses);
 router.delete('/:id',               ReponsesController.supprimer);
 
 module.exports = router;

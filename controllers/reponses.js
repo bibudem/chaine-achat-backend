@@ -7,6 +7,12 @@ const { posterN8n, notifierEvenement } = require('../util/notifications-n8n');
 // Statut par défaut d'une suggestion envoyée par la communauté UdeM (/suggestion-public).
 const STATUT_SUGGESTION_RECUE = 'Suggestion d’achat reçue';
 
+// Compléter une suggestion publique et la soumettre aux ACQ : équipe de tri + Admin.
+const ROLES_COMPLETER_SUGGESTION = ['TechDoc', 'Admin', 'SuperAdmin'];
+// Champs « TechDoc Tri » (transmise en bibliothèque, notes) : équipe de tri seulement (le
+// SuperAdmin hérite de tous les accès).
+const ROLES_SUIVI_TRI = ['TechDoc', 'SuperAdmin'];
+
 const APP_URL = process.env.APP_URL || 'http://localhost:4200';
 
 const N8N_SUGGESTION_URL          = config.n8n.suggestionUrl;
@@ -219,8 +225,10 @@ const ReponsesController = {
     // Suivi interne de l'équipe TechDoc — saisi en même temps que la décision de tri (voir
     // tri-suggestions.component.ts), reporté dans tbl_reponses.reponses pour suivre la
     // suggestion même si elle n'est pas (encore) matérialisée en item.
-    const techdocSuggestionTransmise = !!req.body?.techdoc_suggestion_transmise;
-    const techdocTriNotes            = (req.body?.techdoc_tri_notes || '').trim() || null;
+    // Réservé à l'équipe de tri : ignoré quand un Admin rend la décision (supervision).
+    const suiviTri = ROLES_SUIVI_TRI.includes(req.user?.role);
+    const techdocSuggestionTransmise = suiviTri && !!req.body?.techdoc_suggestion_transmise;
+    const techdocTriNotes            = suiviTri ? ((req.body?.techdoc_tri_notes || '').trim() || null) : null;
 
     if (!['accepte', 'refuse'].includes(decision)) {
       return res.status(400).json({ error: "Décision invalide (attendu : 'accepte' ou 'refuse')." });
@@ -668,6 +676,22 @@ const ReponsesController = {
       // État avant modification : sert à détecter qu'une suggestion publique acceptée vient
       // d'être soumise aux ACQ (item pas encore créé avant cet appel).
       const avant = await ReponsesModel.findById(id);
+
+      // Suggestion publique : seules l'équipe de tri et les Admin la complètent et la soumettent
+      // aux ACQ ; les autres rôles n'y ont accès qu'en lecture.
+      const role = req.user?.role;
+      if (avant?.tri_statut && !ROLES_COMPLETER_SUGGESTION.includes(role)) {
+        return res.status(403).json({ error: 'Seules l\'équipe de tri et les Admin peuvent modifier une suggestion publique.' });
+      }
+      // Champs « TechDoc Tri » : réservés à l'équipe de tri — on conserve les valeurs existantes
+      // pour tout autre rôle (Suggestion d'achat, format plat).
+      if (!ROLES_SUIVI_TRI.includes(role)) {
+        const prec = typeof avant?.reponses === 'string' ? JSON.parse(avant.reponses) : (avant?.reponses || {});
+        for (const champ of ['techdoc_suggestion_transmise', 'techdoc_tri_notes']) {
+          if (champ in reponses || champ in prec) reponses[champ] = prec[champ] ?? null;
+        }
+      }
+
       const updated = await ReponsesModel.updateReponses(id, reponses);
       if (!updated) return res.status(403).json({ error: 'Modification non autorisée ou demande introuvable.' });
       // Une demande déjà existante (brouillon) qu'on bascule à "Soumettre aux ACQ" lors d'une
