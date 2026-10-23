@@ -3,7 +3,7 @@ const PiecesJointesModel = require('../models/pieces-jointes');
 const ItemsFondsModel = require('../models/items-fonds');
 const { filterToTableColumns } = require('../util/db-columns');
 const { publicError } = require('../util/errors');
-const { notifierNoticeTdmSiNouvelle } = require('../util/notifications-n8n');
+const { notifierNoticeTdmSiNouvelle, notifierTdmCompleteSiNouveau } = require('../util/notifications-n8n');
 
 console.log('🎯 Chargement du contrôleur items...');
 
@@ -190,9 +190,10 @@ const itemsController = {
       const safeBaseData = await filterToTableColumns('tbl_items', cleanedBaseData, ['item_id']);
 
       // État avant modification (verrouillé jusqu'au COMMIT) : sert à détecter le passage à
-      // « notice TDM requise » — voir notifierNoticeTdmSiNouvelle plus bas.
+      // « notice TDM requise » puis à « catalogage TDM complété » — voir notifierNoticeTdmSiNouvelle
+      // et notifierTdmCompleteSiNouveau plus bas.
       const { rows: [avant] } = await client.query(
-        'SELECT creation_notice_dtdm, suivi_acq FROM tbl_items WHERE item_id = $1 FOR UPDATE',
+        'SELECT creation_notice_dtdm, suivi_acq, catalogue FROM tbl_items WHERE item_id = $1 FOR UPDATE',
         [itemId]
       );
 
@@ -242,6 +243,8 @@ const itemsController = {
       // Demande traitée par les ACQ avec « Création de notice TDM » = Oui : la BAL TDM est avisée
       // (une seule fois, au passage à cet état).
       await notifierNoticeTdmSiNouvelle(avant, updatedItem.rows[0]);
+      // Catalogage TDM terminé : la BAL ACQ est avisée pour finaliser la demande.
+      await notifierTdmCompleteSiNouveau(avant, updatedItem.rows[0]);
 
       console.log('Item mis à jour avec succès');
       res.json({

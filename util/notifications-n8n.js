@@ -4,8 +4,12 @@
 // Événements :
 //  - 'suggestion-soumise-acq' : une suggestion publique acceptée par l'équipe TechDoc vient
 //                               d'être soumise aux ACQ → courriel à la BAL ACQ.
+//  - 'demande-soumise-acq'    : un brouillon interne vient d'être soumis aux ACQ → courriel à
+//                               la BAL ACQ + accusé de réception à la personne qui l'a saisi.
 //  - 'notice-tdm'             : une demande traitée par les ACQ requiert une création de
 //                               notice → courriel à la BAL TDM.
+//  - 'tdm-complete'           : l'équipe TDM a terminé le catalogage (« Suivi catalogage » =
+//                               Complété) → courriel à la BAL ACQ, qui peut finaliser la demande.
 const axios  = require('axios');
 const config = require('../config/config');
 
@@ -68,4 +72,25 @@ function notifierNoticeTdmSiNouvelle(avant, apres) {
   });
 }
 
-module.exports = { posterN8n, notifierEvenement, notifierNoticeTdmSiNouvelle };
+// Valeur de « Suivi catalogage » (catalogue) qui marque la fin du traitement TDM (même valeur
+// que l'option du formulaire TDM, tdm-decision.component.html).
+const CATALOGUE_COMPLETE = 'Complété';
+
+/** Notifie la BAL ACQ si l'équipe TDM vient de terminer le catalogage d'un item qui requérait
+ *  une notice (passage de « Suivi catalogage » à Complété). */
+function notifierTdmCompleteSiNouveau(avant, apres) {
+  const complete = item => !!item && item.creation_notice_dtdm === true && item.catalogue === CATALOGUE_COMPLETE;
+  if (!complete(apres) || complete(avant)) return Promise.resolve();
+  return notifierEvenement('tdm-complete', apres.item_id, {
+    item_id:         apres.item_id,
+    type_formulaire: apres.formulaire_type,
+    titre_document:  apres.titre_document,
+    sous_titre:      apres.sous_titre,
+    bibliotheque:    apres.bibliotheque,
+    demandeur:       apres.demandeur,
+    suivi_acq:       apres.suivi_acq,
+    note_dtdm:       apres.note_dtdm,
+  });
+}
+
+module.exports = { posterN8n, notifierEvenement, notifierNoticeTdmSiNouvelle, notifierTdmCompleteSiNouveau };

@@ -36,8 +36,12 @@ function redirect(res, url) {
 // diverger. Un brouillon encore "Saisie en cours…" reste non matérialisé, comme avant,
 // pour ne pas désynchroniser tbl_items si l'usager continue de le modifier (updateReponse
 // ne met à jour que tbl_reponses, jamais l'item déjà créé).
+function _estSoumise(baseData) {
+  return baseData?.statut_bibliotheque === 'Soumettre aux ACQ';
+}
+
 async function _materialiserItem(reponseId, baseData, logKey) {
-  if (baseData?.statut_bibliotheque !== 'Soumettre aux ACQ') return null;
+  if (!_estSoumise(baseData)) return null;
   try {
     const itemId = await ReponsesModel.creerItemDepuisReponse(reponseId);
     console.log(`✅ [${logKey}] item créé immédiatement — réponse #${reponseId} → item #${itemId}`);
@@ -57,10 +61,14 @@ async function _creerFormulaire(req, res, typeFormulaire, n8nUrl, logKey) {
     });
     const { baseData = {}, specificData = {} } = reponses;
     const itemId = await _materialiserItem(row.id, baseData, logKey);
-    await posterN8n(n8nUrl, logKey, row.id, {
-      id: row.id, item_id: itemId, type_formulaire: typeFormulaire,
-      usager_nom, usager_courriel, usager_statut, baseData, specificData
-    });
+    // Courriels (ACQ + accusé de réception) seulement pour une demande soumise aux ACQ : un
+    // brouillon les déclenchera à sa soumission (voir patchReponses).
+    if (_estSoumise(baseData)) {
+      await posterN8n(n8nUrl, logKey, row.id, {
+        id: row.id, item_id: itemId, type_formulaire: typeFormulaire,
+        usager_nom, usager_courriel, usager_statut, baseData, specificData
+      });
+    }
     return res.status(201).json({ message: `${typeFormulaire} enregistré.`, id: row.id, dateA: row.dateA, item_id: itemId });
   } catch (err) {
     console.error(`[${logKey}] create:`, err);
@@ -95,16 +103,19 @@ const ReponsesController = {
       // "Soumettre aux ACQ" est déjà choisi.
       const itemId = await _materialiserItem(row.id, reponses, 'suggestion');
 
-      // Notifier n8n /suggestion (attendu : voir posterN8n)
-      await posterN8n(N8N_SUGGESTION_URL, 'suggestion', row.id, {
-        id:              row.id,
-        item_id:         itemId,
-        type_formulaire: "Suggestion d'achat - Usager",
-        usager_nom,
-        usager_courriel,
-        usager_statut,
-        reponses
-      });
+      // Notifier n8n /suggestion (attendu : voir posterN8n) — seulement si soumise aux ACQ ; un
+      // brouillon est notifié à sa soumission (voir patchReponses).
+      if (_estSoumise(reponses)) {
+        await posterN8n(N8N_SUGGESTION_URL, 'suggestion', row.id, {
+          id:              row.id,
+          item_id:         itemId,
+          type_formulaire: "Suggestion d'achat - Usager",
+          usager_nom,
+          usager_courriel,
+          usager_statut,
+          reponses
+        });
+      }
 
       return res.status(201).json({
         message: 'Suggestion enregistrée.',
@@ -199,8 +210,8 @@ const ReponsesController = {
   },
 
   // PUT /reponses/:id/tri  { decision: 'accepte'|'refuse', commentaire }
-  // Le commentaire est obligatoire en cas de refus ; dans les deux cas il est transmis au
-  // demandeur dans le courriel de décision (n8n /tri-decision).
+  // Le commentaire est obligatoire en cas de refus ; il est alors transmis au demandeur dans
+  // le courriel de refus (n8n /tri-decision). Une acceptation n'envoie pas de courriel.
   async decisionTri(req, res) {
     const { id } = req.params;
     const decision    = req.body?.decision;
@@ -240,17 +251,23 @@ const ReponsesController = {
         });
       }
 
-      const data = typeof updated.reponses === 'string' ? JSON.parse(updated.reponses) : (updated.reponses || {});
-      await posterN8n(N8N_TRI_DECISION_URL, 'tri-decision', updated.id, {
-        reponse_id:      updated.id,
-        type_formulaire: "Suggestion d'achat - Usager",
-        decision,
-        commentaire,
-        usager_nom:      updated.usager_nom,
-        usager_courriel: updated.usager_courriel,
-        titre_document:  data.titre_document || null,
-        auteur:          data.auteur || null,
-      });
+      // Refus seulement : le demandeur est avisé tout de suite. Une suggestion acceptée ne
+      // déclenche aucun courriel au demandeur à cette étape — les ACQ sont avisés quand elle
+      // leur est soumise (événement 'suggestion-soumise-acq', voir patchReponses), puis le
+      // demandeur et l'équipe de tri reçoivent la confirmation de fin de traitement des ACQ.
+      if (decision === 'refuse') {
+        const data = typeof updated.reponses === 'string' ? JSON.parse(updated.reponses) : (updated.reponses || {});
+        await posterN8n(N8N_TRI_DECISION_URL, 'tri-decision', updated.id, {
+          reponse_id:      updated.id,
+          type_formulaire: "Suggestion d'achat - Usager",
+          decision,
+          commentaire,
+          usager_nom:      updated.usager_nom,
+          usager_courriel: updated.usager_courriel,
+          titre_document:  data.titre_document || null,
+          auteur:          data.auteur || null,
+        });
+      }
 
       return res.json({ success: true, data: updated });
     } catch (err) {
@@ -337,17 +354,20 @@ const ReponsesController = {
 
       const itemId = await _materialiserItem(row.id, baseData, 'nouvel-achat');
 
-      // Notifier n8n /nouvel-achat (attendu : voir posterN8n)
-      await posterN8n(N8N_NOUVEL_ACHAT_URL, 'nouvel-achat', row.id, {
-        id:              row.id,
-        item_id:         itemId,
-        type_formulaire: 'Nouvel achat unique',
-        usager_nom,
-        usager_courriel,
-        usager_statut,
-        baseData,
-        specificData
-      });
+      // Notifier n8n /nouvel-achat (attendu : voir posterN8n) — seulement si soumise aux ACQ ;
+      // un brouillon est notifié à sa soumission (voir patchReponses).
+      if (_estSoumise(baseData)) {
+        await posterN8n(N8N_NOUVEL_ACHAT_URL, 'nouvel-achat', row.id, {
+          id:              row.id,
+          item_id:         itemId,
+          type_formulaire: 'Nouvel achat unique',
+          usager_nom,
+          usager_courriel,
+          usager_statut,
+          baseData,
+          specificData
+        });
+      }
 
       return res.status(201).json({
         message: 'Nouvel achat unique enregistré.',
@@ -668,6 +688,18 @@ const ReponsesController = {
           usager_courriel: avant.usager_courriel,
           usager_statut:   avant.usager_statut,
           tri_par_nom:     avant.tri_par_nom,
+          reponses,
+        });
+      } else if (itemId && avant && !avant.tri_statut && !avant.item_id_cree) {
+        // Brouillon interne soumis aux ACQ à l'instant : mêmes courriels qu'une demande soumise
+        // dès sa création (BAL ACQ + accusé de réception à la personne qui l'a saisie).
+        await notifierEvenement('demande-soumise-acq', id, {
+          id:              Number(id),
+          item_id:         itemId,
+          type_formulaire: avant.type_formulaire,
+          usager_nom:      avant.usager_nom,
+          usager_courriel: avant.usager_courriel,
+          usager_statut:   avant.usager_statut,
           reponses,
         });
       }
