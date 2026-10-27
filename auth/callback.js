@@ -25,21 +25,20 @@ async function handleCallback(req, res) {
     const nom    = userInfo.family_name || '';
     const prenom = userInfo.given_name || '';
 
-    // Rôle applicatif (Admin/TDM/Employe/Usager/SuperAdmin) géré en base locale, pas par
-    // Azure AD — voir models/utilisateurs.js. Premier login seulement : Employe si membre
-    // bib-usagers (personnel des bibliothèques), Usager sinon (reste de la communauté UdeM,
-    // accès restreint à ses propres demandes) ; un login existant garde son rôle actuel, géré
-    // manuellement en base (jamais réécrasé ici) — un SuperAdmin doit promouvoir au besoin.
-    const roleParDefaut = isBibUsager(userInfo) ? 'Employe' : 'Usager';
-    const utilisateur = await UtilisateursModel.upsertFromLogin({ email, nom, prenom, role: roleParDefaut });
+    // Rôle applicatif : celui du profil en base s'il existe (SuperAdmin, Admin, TechDoc, TDM…,
+    // créés dans Configuration > Utilisateurs — voir models/utilisateurs.js). Sinon, aucun
+    // profil n'est créé : Employe si membre bib-usagers (personnel des bibliothèques), Usager
+    // sinon (reste de la communauté UdeM), déduit à chaque login.
+    const utilisateur = await UtilisateursModel.majConnexion({ email, nom, prenom });
+    const role = utilisateur?.role || (isBibUsager(userInfo) ? 'Employe' : 'Usager');
 
     const token = auth.signToken({
       sub:    userInfo.oid || userInfo.sub,
       email,
       nom,
       prenom,
-      groupe: groupeForRole(utilisateur.role),
-      role:   utilisateur.role,
+      groupe: groupeForRole(role),
+      role,
       // TEMPORAIRE — debug, à retirer : toutes les claims brutes du ID token Azure AD
       azureRaw: userInfo,
     });

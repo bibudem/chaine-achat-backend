@@ -14,22 +14,22 @@ const UtilisateursModel = {
     return rows[0] || null;
   },
 
-  // Appelé à chaque login réussi : crée l'usager (rôle fourni par l'appelant — voir
-  // auth/callback.js, Employe vs Usager selon bib-usagers) s'il n'existe pas encore, sinon
-  // met à jour nom/prénom/dernière connexion — le rôle d'un compte existant n'est jamais
-  // écrasé ici, il est géré manuellement en base.
-  async upsertFromLogin({ email, nom, prenom, role }) {
+  // Appelé à chaque login réussi : met à jour nom/prénom/dernière connexion d'un profil
+  // existant (SuperAdmin, Admin, TechDoc, TDM… créés dans Configuration > Utilisateurs) et le
+  // renvoie, ou null s'il n'y en a pas. Ne crée jamais de profil : Employe/Usager n'ont pas
+  // besoin d'être en base, leur rôle est déduit à chaque login (voir auth/callback.js). Le
+  // rôle d'un profil existant n'est jamais modifié ici.
+  async majConnexion({ email, nom, prenom }) {
     const { rows } = await pool.query(
-      `INSERT INTO tbl_utilisateurs (email, nom, prenom, role)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (email) DO UPDATE
-         SET nom = EXCLUDED.nom,
-             prenom = EXCLUDED.prenom,
-             date_derniere_connexion = NOW()
-       RETURNING *`,
-      [email, nom, prenom, role]
+      `UPDATE tbl_utilisateurs
+          SET nom = $2,
+              prenom = $3,
+              date_derniere_connexion = NOW()
+        WHERE lower(email) = lower($1)
+        RETURNING *`,
+      [email, nom, prenom]
     );
-    return rows[0];
+    return rows[0] || null;
   },
 
   async list() {
