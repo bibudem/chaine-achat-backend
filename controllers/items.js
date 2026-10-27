@@ -361,8 +361,12 @@ const itemsController = {
       const statut           = (req.query.statut           || '').trim();
       const suivi_acq        = (req.query.suivi_acq        || '').trim();
       const formulaire_type  = (req.query.formulaire_type  || '').trim();
-      const fonds_budgetaire = (req.query.fonds_budgetaire || '').trim();
+      // Plusieurs fonds possibles, séparés par des virgules (filtre à choix multiples).
+      const fondsListe       = String(req.query.fonds_budgetaire || '').split(',').map(f => f.trim()).filter(Boolean);
       const priorite_demande = (req.query.priorite_demande || '').trim();
+      // Précision de la demande (« Type de demande ») — Modification et CCOL seulement,
+      // stockée dans tbl_modification_ccol.
+      const precision_demande = (req.query.precision_demande || '').trim();
       // Filtre "Voir les items importés" depuis le résultat/registre d'un import en lot
       // (voir controllers/import.js, colonne tbl_items.import_log_id).
       const importLogIdRaw = (req.query.import_log_id || '').trim();
@@ -375,7 +379,7 @@ const itemsController = {
       const anneeRaw = (req.query.annee || '').trim();
       const annee    = anneeRaw && anneeRaw !== 'all' && /^\d{4}$/.test(anneeRaw) ? parseInt(anneeRaw, 10) : null;
 
-      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','priorite_demande','isbn_issn','demandeur','bibliotheque','fonds_budgetaire','statut_bibliotheque','statut_acq','suivi_acq','date_creation','date_modification']);
+      const SORT_COLS = new Set(['item_id','titre_document','formulaire_type','priorite_demande','precision_demande','isbn_issn','demandeur','bibliotheque','fonds_budgetaire','statut_bibliotheque','statut_acq','suivi_acq','date_creation','date_modification']);
       // "defaut" (ou sort absent) : tri multi-critères (voir orderClause plus bas) plutôt
       // qu'un simple tri par colonne — appliqué uniquement à l'arrivée sur la page, avant
       // qu'un clic sur un en-tête de colonne ne remplace ce tri par un tri simple.
@@ -415,9 +419,15 @@ const itemsController = {
         params.push(formulaire_type);
         conditions.push(`formulaire_type = $${params.length}`);
       }
-      if (fonds_budgetaire) {
-        params.push(`%${fonds_budgetaire}%`);
-        conditions.push(`fonds_budgetaire ILIKE $${params.length}`);
+      if (fondsListe.length) {
+        // Fonds principal (tbl_items) ou l'un des fonds d'une répartition (tbl_items_fonds).
+        params.push(fondsListe);
+        const i = params.length;
+        conditions.push(`(fonds_budgetaire = ANY($${i}) OR item_id IN (SELECT item_id FROM tbl_items_fonds WHERE fonds_budgetaire = ANY($${i})))`);
+      }
+      if (precision_demande) {
+        params.push(precision_demande);
+        conditions.push(`item_id IN (SELECT item_id FROM tbl_modification_ccol WHERE precision_demande = $${params.length})`);
       }
       if (priorite_demande) {
         params.push(priorite_demande);
@@ -465,7 +475,11 @@ const itemsController = {
           : `${sortCol} ${sortDir}`;
 
       params.push(limit, offset);
-      const dataQuery  = `SELECT * FROM tbl_items ${where} ORDER BY ${orderClause} LIMIT $${filterParamLen + 1} OFFSET $${filterParamLen + 2}`;
+      // precision_demande : colonne de tbl_modification_ccol, ajoutée pour la colonne et le tri
+      // de la liste (sous-requête plutôt que jointure : les filtres plus haut restent non qualifiés).
+      const dataQuery  = `SELECT *, (SELECT mc.precision_demande FROM tbl_modification_ccol mc
+                                      WHERE mc.item_id = tbl_items.item_id LIMIT 1) AS precision_demande
+                            FROM tbl_items ${where} ORDER BY ${orderClause} LIMIT $${filterParamLen + 1} OFFSET $${filterParamLen + 2}`;
       const countQuery = `SELECT COUNT(*) AS total FROM tbl_items ${where}`;
 
       const [itemsResult, countResult] = await Promise.all([
