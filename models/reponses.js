@@ -627,6 +627,14 @@ const ReponsesModel = {
     if (cleanBase.statut_bibliotheque === 'Soumettre aux ACQ') {
       if (!cleanBase.statut_acq) cleanBase.statut_acq = 'En attente';           // dircolAcqStatutOptions
       if (!cleanBase.suivi_acq)  cleanBase.suivi_acq  = 'En attente de traitement'; // dircolAcqSuiviOptions
+      // Création de notice TDM, si le formulaire ne l'a pas fournie : Oui pour l'imprimé
+      // (Imprimé/support physique, Imprimé et électronique), Non pour l'électronique — les ACQ
+      // la passent à Oui au besoin. Même règle que l'affichage de la page de décision ACQ
+      // (statut-decision.component.ts, applyAcqDefaults). Sans format (ex. Suggestion d'achat,
+      // format saisi plus tard par les ACQ), on ne présume rien.
+      if (cleanBase.creation_notice_dtdm == null && cleanBase.format_support) {
+        cleanBase.creation_notice_dtdm = cleanBase.format_support !== 'Électronique';
+      }
     }
 
     const client = await pool.connect();
