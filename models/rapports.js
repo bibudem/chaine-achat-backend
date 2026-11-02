@@ -282,11 +282,66 @@ async function rapportDetaille(filters = {}, limit = 100, offset = 0) {
   };
 }
 
+// ─── Suivis des bibliothèques ────────────────────────────
+// Remplace les vues Mentor utilisées par les chefs de bibliothèque et les bibliothécaires
+// disciplinaires, pour une ou plusieurs bibliothèques à la fois :
+//  - 'montants' : demandes soumises aux ACQ pas encore traitées (statut ACQ vide, En attente
+//    ou En traitement) — montants en attente d'être saisis dans WMS (vue Mentor « ACQ -
+//    Montant des demandes d'achat ») ;
+//  - 'statuts'  : toutes les demandes enregistrées, pour le suivi par statut (vue Mentor
+//    « BIB - L.S.H. - suivis »).
+// Le regroupement (par bibliothèque, par statut ACQ…) et les totaux sont faits côté Angular.
+const SUIVIS_LIMITE = 10000;
+
+async function suivisBibliotheques({ vue, bibliotheques = [] }) {
+  const params = [];
+  const conditions = [];
+
+  if (bibliotheques.length) {
+    // '' = demandes sans bibliothèque renseignée (groupe « Bibliothèque : » de Mentor).
+    params.push(bibliotheques.filter(b => b !== ''));
+    conditions.push(bibliotheques.includes('')
+      ? `(i.bibliotheque = ANY($1) OR COALESCE(i.bibliotheque, '') = '')`
+      : `i.bibliotheque = ANY($1)`);
+  }
+  if (vue === 'montants') {
+    conditions.push(`i.statut_bibliotheque = 'Soumettre aux ACQ'`);
+    conditions.push(`COALESCE(NULLIF(i.statut_acq, ''), 'En attente') IN ('En attente', 'En traitement')`);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const { rows } = await pool.query(`
+    SELECT i.item_id, i.formulaire_type, i.date_creation, i.priorite_demande,
+           i.titre_document, i.isbn_issn, i.periode_couverte, i.bibliotheque, i.demandeur,
+           i.prix_cad, i.statut_bibliotheque, i.statut_acq, i.suivi_acq, i.note_acq,
+           -- Fonds partagés (tbl_items_fonds) : « FONDS (XX %) + … », sinon le fonds simple.
+           COALESCE(
+             (SELECT string_agg(f.fonds_budgetaire || ' (' || replace(f.pourcentage::text, '.', ',') || ' %)', ' + ' ORDER BY f.ordre)
+                FROM tbl_items_fonds f WHERE f.item_id = i.item_id),
+             i.fonds_budgetaire
+           ) AS fonds_budgetaire,
+           -- Parts par fonds (fonds partagés seulement) : la somme par « Fonds budgétaire à
+           -- imputer » est ventilée selon la part de chaque fonds, pas imputée en entier.
+           (SELECT json_agg(json_build_object('fonds', f.fonds_budgetaire, 'prix_cad', f.prix_cad) ORDER BY f.ordre)
+              FROM tbl_items_fonds f WHERE f.item_id = i.item_id) AS fonds_parts,
+           mc.precision_demande,
+           -- « Créé par » : la personne qui a saisi le formulaire (absente pour un import).
+           (SELECT r.usager_nom FROM tbl_reponses r WHERE r.item_id_cree = i.item_id LIMIT 1) AS cree_par
+      FROM tbl_items i
+      LEFT JOIN tbl_modification_ccol mc ON mc.item_id = i.item_id
+      ${where}
+     ORDER BY i.item_id DESC
+     LIMIT ${SUIVIS_LIMITE}
+  `, params);
+  return rows;
+}
+
 // ─── Exports ─────────────────────────────────────────────
 
 module.exports = {
   COL,
   STATUTS,
   statistiquesGenerales,
-  rapportDetaille
+  rapportDetaille,
+  suivisBibliotheques
 };

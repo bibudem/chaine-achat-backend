@@ -40,6 +40,21 @@ exports.getStatistiquesGenerales = async (req, res) => {
 // Tous les regroupements (par type, bibliothèque, etc.)
 // sont calculés côté Angular sur ces données.
 // ======================
+// ======================
+// SUIVIS DES BIBLIOTHÈQUES (vues Mentor)
+// ?vue=montants|statuts&bibliotheques=A,B  ('' = sans bibliothèque ; absent = toutes)
+// ======================
+exports.getSuivisBibliotheques = async (req, res) => {
+  try {
+    const vue = req.query.vue === 'montants' ? 'montants' : 'statuts';
+    const bibliotheques = typeof req.query.bibliotheques === 'string' && req.query.bibliotheques !== ''
+      ? req.query.bibliotheques.split('|').map(b => b.trim())
+      : [];
+    const data = await rapportsModel.suivisBibliotheques({ vue, bibliotheques });
+    return success(res, data);
+  } catch (e) { return error(res, e); }
+};
+
 exports.getRapportDetaille = async (req, res) => {
   try {
     const filters = pick(req.query, [
