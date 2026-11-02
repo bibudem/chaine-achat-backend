@@ -892,7 +892,13 @@ const ReponsesModel = {
                 i.suivi_acq,
                 i.statut_acq,
                 i.note_acq,
-                i.note_commentaire
+                i.note_commentaire,
+                -- Numéro affiché à l'usager = numéro de l'item (celui des demandes transmises).
+                r.item_id_cree AS item_id,
+                -- Précision de la demande (Modification et CCOL seulement).
+                COALESCE((SELECT mc.precision_demande FROM tbl_modification_ccol mc
+                           WHERE mc.item_id = r.item_id_cree LIMIT 1),
+                         r.reponses->'specificData'->>'precision_demande') AS precision_demande
            FROM tbl_reponses r
            LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
           WHERE r.usager_courriel = $1
@@ -960,7 +966,13 @@ const ReponsesModel = {
                 COALESCE(i.bibliotheque,   r.reponses->>'bibliotheque',   r.reponses->'baseData'->>'bibliotheque')   AS bibliotheque,
                 COALESCE(i.statut_bibliotheque, r.reponses->>'statut_bibliotheque', r.reponses->'baseData'->>'statut_bibliotheque') AS statut_bibliotheque,
                 i.suivi_acq,
-                i.statut_acq
+                i.statut_acq,
+                -- Numéro affiché à l'usager = numéro de l'item (celui des demandes transmises).
+                r.item_id_cree AS item_id,
+                -- Précision de la demande (Modification et CCOL seulement).
+                COALESCE((SELECT mc.precision_demande FROM tbl_modification_ccol mc
+                           WHERE mc.item_id = r.item_id_cree LIMIT 1),
+                         r.reponses->'specificData'->>'precision_demande') AS precision_demande
            FROM tbl_reponses r
            LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
       ) sub
