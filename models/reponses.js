@@ -47,7 +47,7 @@ const SUGGESTION_SPEC_KEYS = [
   'aviser_reservation', 'aviser_reception', 'date_requise_cours',
   'note_usager', 'reserve_cours', 'reserve_cours_sigle', 'bordereau_imprime',
   'acq_raison_annulation', 'techdoc_suggestion_transmise', 'techdoc_tri_notes', 'acq_isbn',
-  'acq_responsable_courriel',
+  'acq_responsable_courriel', 'courriel_tierce_personne', 'type_document', 'edition',
 ];
 
 const ReponsesModel = {
@@ -121,7 +121,8 @@ const ReponsesModel = {
       params.push(`%${search}%`);
       conditions.push(`(r.reponses->>'titre_document' ILIKE $${params.length}
                      OR r.usager_nom      ILIKE $${params.length}
-                     OR r.usager_courriel ILIKE $${params.length})`);
+                     OR r.usager_courriel ILIKE $${params.length}
+                     OR r.reponses->>'courriel_tierce_personne' ILIKE $${params.length})`);
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
@@ -279,6 +280,21 @@ const ReponsesModel = {
           r.date_requise_cours             || null
         ]
       );
+
+      // Champs ajoutés après coup (courriel de la tierce personne, type de document, édition) :
+      // chacun est ignoré tant que sa colonne n'existe pas en base.
+      const ajouts = await filterToTableColumns('tbl_suggestion_achat', {
+        courriel_tierce_personne: r.courriel_tierce_personne || null,
+        type_document:            r.type_document            || null,
+        edition:                  r.edition                  || null,
+      }, ['item_id']);
+      const colonnesAjouts = Object.keys(ajouts);
+      if (colonnesAjouts.length) {
+        await client.query(
+          `UPDATE tbl_suggestion_achat SET ${colonnesAjouts.map((c, i) => `${c} = $${i + 2}`).join(', ')} WHERE item_id = $1`,
+          [itemId, ...colonnesAjouts.map(c => ajouts[c])]
+        );
+      }
 
       // 3. Réserve de cours (optionnel)
       if (r.reserve_cours === true || r.reserve_cours === 'true') {
