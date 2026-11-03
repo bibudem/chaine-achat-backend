@@ -31,8 +31,8 @@ const Logs = {
 
     /*
       Stratégie :
-      - Les totaux d'activité (byType, byPriority, topDemandeurs) portent sur l'ANNÉE
-        sélectionnée (ou toutes années si "all")
+      - Les totaux d'activité (byType, topDemandeurs) portent sur l'ANNÉE sélectionnée (ou
+        toutes années si "all") ; byPriority porte sur toutes les années (voir sa CTE)
       - items_last_7_days reste toujours sur les 7 derniers jours calendaires, indépendant
         de l'année sélectionnée (info contextuelle fixe — n'a pas de sens sur une année passée)
       - byStatutAcq/bySuiviAcq : état ACTUEL de tous les items, toujours toutes années (backlog,
@@ -105,9 +105,9 @@ const Logs = {
           COALESCE(priorite_demande, 'Non spécifiée') AS priorite,
           COUNT(*)                                     AS count,
           CASE
-            WHEN priorite_demande = 'Haute'   THEN 1
-            WHEN priorite_demande = 'Moyenne' THEN 2
-            WHEN priorite_demande = 'Basse'   THEN 3
+            WHEN priorite_demande = 'Urgent'      THEN 1
+            WHEN priorite_demande = 'Prioritaire' THEN 2
+            WHEN priorite_demande = 'Régulier'    THEN 3
             ELSE 4
           END AS order_priority
         FROM tbl_items
@@ -116,9 +116,9 @@ const Logs = {
       ),
 
       -- Répartition Statut ACQ / Suivi ACQ : état ACTUEL de tous les items, pas limité à la
-      -- période sélectionnée (contrairement à by_priority/by_type ci-dessus, basés sur la
-      -- CTE filtered) — un backlog ACQ ne doit pas se vider juste parce qu'on regarde "7
-      -- derniers jours". Même univers que le total tout-items de la carte "Total demandes".
+      -- période sélectionnée (contrairement à by_type ci-dessus, basé sur la CTE filtered)
+      -- — un backlog ACQ ne doit pas se vider juste parce qu'on filtre sur une année. Même
+      -- univers que le total tout-items de la carte "Total demandes".
       by_statut_acq AS (
         SELECT
           COALESCE(NULLIF(statut_acq, ''), 'Non défini') AS statut,

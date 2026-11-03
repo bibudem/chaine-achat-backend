@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const multer  = require('multer');
+const { requirePersonnel, requireAdmin } = require('../middleware/jwt.middleware');
 
 console.log('🛣️ Initialisation des routes import...');
 
@@ -50,14 +51,14 @@ const upload = multer({
 
 // POST — importer un fichier Excel pour un type de formulaire
 // ex: POST /import/Nouvel achat unique   (type encodé dans l'URL)
-router.post('/:type', upload.single('file'), importController.importExcel);
+router.post('/:type', requireAdmin, upload.single('file'), importController.importExcel);
 
 // GET  — télécharger le modèle Excel vide pour un type
 // ex: GET /import/template/Nouvel achat unique
-router.get('/template/:type', importController.downloadTemplate);
+router.get('/template/:type', requireAdmin, importController.downloadTemplate);
 
 // ==================== ROUTE DE TEST ====================
-router.get('/test', (req, res) => {
+router.get('/test', requirePersonnel, (req, res) => {
   res.json({
     message:   'Routes import fonctionnelles',
     database:  'PostgreSQL',

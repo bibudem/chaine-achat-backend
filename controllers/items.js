@@ -7,10 +7,23 @@ const { notifierNoticeTdmSiNouvelle, notifierTdmCompleteSiNouveau } = require('.
 
 console.log('🎯 Chargement du contrôleur items...');
 
+/** Connexion au pool, ou réponse 503 si la base est indisponible : sans ce try, l'erreur de
+ *  pool.connect() sortait du handler (promesse rejetée non gérée, requête sans réponse). */
+async function connecter(res) {
+  try {
+    return await pool.connect();
+  } catch (err) {
+    console.error('❌ Connexion à la base impossible:', err);
+    res.status(503).json({ success: false, error: 'Base de données indisponible.' });
+    return null;
+  }
+}
+
 const itemsController = {
   // ==================== CREATE ====================
   postItems: async (req, res) => {
-    const client = await pool.connect();
+    const client = await connecter(res);
+    if (!client) return;
     
     try {
       console.log('➡️ POST /api/items/add');
@@ -105,7 +118,8 @@ const itemsController = {
 
   // ==================== READ ONE ====================
   consulterItems: async (req, res) => {
-    const client = await pool.connect();
+    const client = await connecter(res);
+    if (!client) return;
     
     try {
       const itemId = req.params.id;
@@ -167,7 +181,8 @@ const itemsController = {
 
   // ==================== UPDATE ====================
   putItems: async (req, res) => {
-    const client = await pool.connect();
+    const client = await connecter(res);
+    if (!client) return;
     
     try {
       const itemId = req.params.id;
@@ -275,7 +290,8 @@ const itemsController = {
     if (!Number.isInteger(itemId) || typeof transmise !== 'boolean') {
       return res.status(400).json({ success: false, error: 'Paramètres invalides.' });
     }
-    const client = await pool.connect();
+    const client = await connecter(res);
+    if (!client) return;
     try {
       await client.query('BEGIN');
       const { rows } = await client.query(
@@ -306,13 +322,16 @@ const itemsController = {
 
   // ==================== DELETE ====================
   deleteItems: async (req, res) => {
-    const client = await pool.connect();
+    const client = await connecter(res);
+    if (!client) return;
     
     try {
       const itemId = req.params.id;
       console.log('➡️ DELETE /api/items/delete/' + itemId);
       
-      // Marquer la réponse source comme item supprimé (avant que le FK SET NULL s'exécute)
+      // Une seule transaction : la réponse source n'est marquée « item supprimé » (avant que le
+      // FK SET NULL s'exécute) que si l'item est réellement supprimé.
+      await client.query('BEGIN');
       await client.query(
         `UPDATE tbl_reponses SET statut_approbation = 'item_supprime' WHERE item_id_cree = $1`,
         [itemId]
@@ -322,12 +341,14 @@ const itemsController = {
       const result = await client.query(query, [itemId]);
 
       if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
         return res.status(404).json({
           success: false,
           error: 'Item non trouvé pour la suppression'
         });
       }
 
+      await client.query('COMMIT');
       console.log(`✅ Item ${itemId} supprimé (CASCADE vers tables spécifiques)`);
       res.json({
         success: true,
@@ -336,6 +357,7 @@ const itemsController = {
       });
       
     } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
       console.error('❌ Erreur DELETE:', error);
       res.status(500).json({
         success: false,
@@ -348,7 +370,8 @@ const itemsController = {
 
   // ==================== READ ALL + PAGINATION ====================
   getAllItems: async (req, res) => {
-    const client = await pool.connect();
+    const client = await connecter(res);
+    if (!client) return;
 
     try {
       console.log('➡️ GET /api/items/all');
@@ -520,7 +543,8 @@ const itemsController = {
 
   // ==================== SEARCH ====================
   searchItems: async (req, res) => {
-    const client = await pool.connect();
+    const client = await connecter(res);
+    if (!client) return;
     
     try {
       const searchTerm = req.query.q || '';
@@ -568,7 +592,8 @@ const itemsController = {
 
   // ==================== FILTER BY TYPE ====================
   getItemsByType: async (req, res) => {
-    const client = await pool.connect();
+    const client = await connecter(res);
+    if (!client) return;
     
     try {
       const type = req.params.type;
@@ -603,7 +628,8 @@ const itemsController = {
 
   // ==================== FILTER BY STATUS ====================
   getItemsByStatus: async (req, res) => {
-    const client = await pool.connect();
+    const client = await connecter(res);
+    if (!client) return;
     
     try {
       const status = req.params.status;
@@ -638,7 +664,8 @@ const itemsController = {
 
   // ==================== STATISTICS ====================
   getStatistics: async (req, res) => {
-    const client = await pool.connect();
+    const client = await connecter(res);
+    if (!client) return;
     
     try {
       console.log('GET /api/items/statistics');
@@ -682,7 +709,8 @@ const itemsController = {
 
   // ==================== BATCH CREATE ====================
   createBatch: async (req, res) => {
-    const client = await pool.connect();
+    const client = await connecter(res);
+    if (!client) return;
     
     try {
       console.log('POST /api/items/batch');

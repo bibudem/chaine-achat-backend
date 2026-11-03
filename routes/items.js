@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const PiecesJointesController = require('../controllers/pieces-jointes');
-const { requireAuth, requireRole } = require('../middleware/jwt.middleware');
+const { requireAuth, requireRole, requirePersonnel, requireAdmin } = require('../middleware/jwt.middleware');
 
 console.log('🛣️ Initialisation des routes items...');
 
@@ -48,46 +48,47 @@ requiredMethods.forEach(method => {
 // ==================== ROUTES CRUD ====================
 
 // CREATE - Ajouter un nouvel item
-router.post('/add', itemsController.postItems);
+router.post('/add', requireAdmin, itemsController.postItems);
 
 // READ - Consulter un item par ID
-router.get('/fiche/:id', itemsController.consulterItems);
+router.get('/fiche/:id', requirePersonnel, itemsController.consulterItems);
 
 // UPDATE - Modifier un item
-router.put('/save/:id', itemsController.putItems);
+// Personnel : la décision ACQ et le choix de notice TDM (statut-decision) enregistrent ici.
+router.put('/save/:id', requirePersonnel, itemsController.putItems);
 
 // TechDoc Tri — « Suggestion d'achat transmise en bibliothèque » (étape de fin, Admin/SuperAdmin)
 router.put('/:id/techdoc-transmise', requireAuth, requireRole('Admin', 'SuperAdmin'),
   (req, res) => itemsController.majTechdocTransmise(req, res));
 
 // DELETE - Supprimer un item
-router.delete('/delete/:id', itemsController.deleteItems);
+router.delete('/delete/:id', requireAdmin, itemsController.deleteItems);
 
 // ==================== ROUTES DE LISTING ====================
 
 // GET ALL - Récupérer tous les items avec pagination
-router.get('/all', itemsController.getAllItems);
+router.get('/all', requirePersonnel, itemsController.getAllItems);
 
 // SEARCH - Rechercher des items
-router.get('/search', itemsController.searchItems);
+router.get('/search', requirePersonnel, itemsController.searchItems);
 
 // FILTER BY TYPE - Filtrer par type de formulaire
-router.get('/type/:type', itemsController.getItemsByType);
+router.get('/type/:type', requirePersonnel, itemsController.getItemsByType);
 
 // FILTER BY STATUS - Filtrer par statut
-router.get('/status/:status', itemsController.getItemsByStatus);
+router.get('/status/:status', requirePersonnel, itemsController.getItemsByStatus);
 
 // ==================== PIÈCES JOINTES (admin) ====================
 // Consultation/ajout direct sur la fiche item (avec ou sans réponse usager d'origine).
-router.post('/:id/pieces-jointes',
+router.post('/:id/pieces-jointes', requirePersonnel,
   PiecesJointesController.uploadMiddleware,
   PiecesJointesController.uploadForItem);
-router.get('/:id/pieces-jointes', PiecesJointesController.listByItem);
+router.get('/:id/pieces-jointes', requirePersonnel, PiecesJointesController.listByItem);
 
 // ==================== ROUTE DE TEST ====================
 
 // Route de test pour vérifier que les routes fonctionnent
-router.get('/test', (req, res) => {
+router.get('/test', requirePersonnel, (req, res) => {
   res.json({
     message: 'Routes items fonctionnelles',
     database: 'PostgreSQL',

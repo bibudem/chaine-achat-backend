@@ -1,6 +1,9 @@
 const express = require('express');
 const router  = express.Router();
 const homeController = require('../controllers/home');
+const { requirePersonnel } = require('../middleware/jwt.middleware');
+
+router.use(requirePersonnel);
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ROUTES HOME / DASHBOARD

@@ -148,7 +148,8 @@ app.use((_req, res) => {
 // Erreur globale
 app.use((err, _req, res, _next) => {
   console.error('❌ Erreur serveur:', err);
-  res.status(err.statusCode || 500).json({
+  const statut = err.statusCode || (err.name === 'MulterError' ? 400 : 500);
+  res.status(statut).json({
     success: false,
     error: publicError(err),
     timestamp: new Date().toISOString()

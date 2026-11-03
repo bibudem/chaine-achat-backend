@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const rapportsController = require('../controllers/rapports');
-const { requireAuth, requireRole } = require('../middleware/jwt.middleware');
+const { requireAuth, requireRole, requirePersonnel, requireAdmin } = require('../middleware/jwt.middleware');
 
-router.get('/statistiques', rapportsController.getStatistiquesGenerales);
-router.get('/detaille',     rapportsController.getRapportDetaille);
+router.get('/statistiques', requirePersonnel, rapportsController.getStatistiquesGenerales);
+router.get('/detaille',     requirePersonnel, rapportsController.getRapportDetaille);
 // Personnel seulement (pas la communauté UdeM) — mêmes rôles que StaffGuard côté Angular.
 router.get('/suivis-bibliotheques', requireAuth,
   requireRole('Admin', 'SuperAdmin', 'TDM', 'Employe', 'TechDoc'),

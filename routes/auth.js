@@ -31,9 +31,7 @@ router.get('/logout', (_req, res) => {
   res.redirect(url);
 });
 
-// GET /auth/me → infos de l'usager connecté, à partir du JWT
-// TEMPORAIRE — debug, à retirer : renvoie tout le contenu du JWT (incluant azureRaw,
-// les claims brutes du ID token Azure AD) au lieu de seulement nom/prenom/email/groupe/role.
+// GET /auth/me → infos de l'usager connecté, à partir du JWT (nom, prénom, courriel, groupe, rôle)
 router.get('/me', requireAuth, (req, res) => {
   res.json({ success: true, data: req.user });
 });

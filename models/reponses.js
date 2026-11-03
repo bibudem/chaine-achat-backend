@@ -173,7 +173,7 @@ const ReponsesModel = {
   // Décision de tri. La condition tri_statut = 'a_trier' rend l'opération atomique : si deux
   // membres de l'équipe décident en même temps, seul le premier l'emporte — le second reçoit
   // la décision déjà prise (voir le contrôleur, qui répond alors 409).
-  async decisionTri({ id, decision, commentaire, par, parNom, techdocSuggestionTransmise, techdocTriNotes }) {
+  async decisionTri({ id, decision, commentaire, par, parNom, techdocSuggestionTransmise, techdocTriNotes, majSuiviTri = true }) {
     const { rows } = await pool.query(
       `UPDATE tbl_reponses
           SET tri_statut      = $2,
@@ -181,14 +181,15 @@ const ReponsesModel = {
               tri_par         = $4,
               tri_par_nom     = $5,
               tri_date        = NOW(),
-              reponses        = reponses::jsonb || jsonb_build_object(
+              -- Suivi TechDoc : mis à jour seulement par l'équipe de tri ($8), sinon conservé.
+              reponses        = reponses::jsonb || CASE WHEN $8::boolean THEN jsonb_build_object(
                                    'techdoc_suggestion_transmise', $6::boolean,
                                    'techdoc_tri_notes', $7::text
-                                 )
+                                 ) ELSE '{}'::jsonb END
         WHERE id = $1
           AND tri_statut = 'a_trier'
         RETURNING id, usager_nom, usager_courriel, reponses, tri_statut, tri_commentaire, tri_par_nom, tri_date`,
-      [id, decision, commentaire, par, parNom, !!techdocSuggestionTransmise, techdocTriNotes || null]
+      [id, decision, commentaire, par, parNom, !!techdocSuggestionTransmise, techdocTriNotes || null, !!majSuiviTri]
     );
     if (rows[0]) return { updated: rows[0] };
 
@@ -208,124 +209,6 @@ const ReponsesModel = {
       [id, !!transmise]
     );
     return rows[0] || null;
-  },
-
-  async insererSuggestionApresApprobation(reponse) {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      // reponses peut être une string JSON (colonne TEXT) ou déjà un objet (JSONB)
-      const raw = reponse.reponses;
-      const r   = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
-
-      // 1. tbl_items
-      const { rows } = await client.query(
-        `INSERT INTO tbl_items (
-          formulaire_type, date_creation, priorite_demande,
-          titre_document, isbn_issn, editeur, date_publication,
-          categorie_document, format_support, 
-          nombre_utilisateurs, source_information,
-          bibliotheque, demandeur,
-          note_commentaire, statut_bibliotheque, statut_acq
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-        RETURNING item_id`,
-        [
-          "Suggestion d'achat - Usager",                              // $1
-          new Date(),                                        // $2
-          r.priorite_demande    || 'Urgent',                // $3
-          r.titre_document      || null,                     // $4
-          r.isbn_issn           || null,                     // $5
-          r.editeur             || null,                     // $6
-          r.date_publication    || null,                     // $7
-          r.categorie_document  || null,                     // $8
-          r.format_support      || null,                     // $9
-          // nombre_utilisateurs : non collecté par le formulaire Suggestion (à plat)
-          null,                                               // $10
-          r.source_information  || null,                     // $11
-          r.bibliotheque        || null,                     // $12
-          reponse.usager_nom    || null,                     // $13
-          r.note_commentaire    || null,                     // $14
-          'En attente en bibliothèque',                      // $15
-          'En attente'                                       // $16
-        ]
-      );
-      const itemId = rows[0].item_id;
-
-      // 2. tbl_suggestion_achat
-      await client.query(
-        `INSERT INTO tbl_suggestion_achat (
-          item_id, auteur, usager_nom, usager_statut, usager_faculte, usager_courriel,
-          bibliothecaire_disciplinaire, aviser_reservation, aviser_reception, date_requise_cours
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-        ON CONFLICT (item_id) DO UPDATE SET
-          auteur                       = EXCLUDED.auteur,
-          usager_nom                   = EXCLUDED.usager_nom,
-          bibliothecaire_disciplinaire = EXCLUDED.bibliothecaire_disciplinaire,
-          aviser_reservation           = EXCLUDED.aviser_reservation,
-          aviser_reception             = EXCLUDED.aviser_reception,
-          date_requise_cours           = EXCLUDED.date_requise_cours`,
-        [
-          itemId,
-          r.auteur                         || null,
-          // Nom de l'usager (étudiant/prof/chercheur) saisi dans le formulaire — distinct de
-          // reponse.usager_nom (le·la TechDoc qui soumet, déjà utilisé pour tbl_items.demandeur).
-          r.usager_nom                     || null,
-          reponse.usager_statut            || null,
-          r.usager_faculte                 || null,
-          reponse.usager_courriel          || null,
-          r.bibliothecaire_disciplinaire   || null,
-          r.aviser_reservation === true || r.aviser_reservation === 'true',
-          r.aviser_reception   === true || r.aviser_reception   === 'true',
-          r.date_requise_cours             || null
-        ]
-      );
-
-      // Champs ajoutés après coup (courriel de la tierce personne, type de document, édition) :
-      // chacun est ignoré tant que sa colonne n'existe pas en base.
-      const ajouts = await filterToTableColumns('tbl_suggestion_achat', {
-        courriel_tierce_personne: r.courriel_tierce_personne || null,
-        type_document:            r.type_document            || null,
-        edition:                  r.edition                  || null,
-      }, ['item_id']);
-      const colonnesAjouts = Object.keys(ajouts);
-      if (colonnesAjouts.length) {
-        await client.query(
-          `UPDATE tbl_suggestion_achat SET ${colonnesAjouts.map((c, i) => `${c} = $${i + 2}`).join(', ')} WHERE item_id = $1`,
-          [itemId, ...colonnesAjouts.map(c => ajouts[c])]
-        );
-      }
-
-      // 3. Réserve de cours (optionnel)
-      if (r.reserve_cours === true || r.reserve_cours === 'true') {
-        await client.query(
-          `INSERT INTO tbl_nouvel_achat_unique (item_id, reserve_cours, reserve_cours_sigle)
-           VALUES ($1, true, $2)
-           ON CONFLICT (item_id) DO UPDATE SET
-             reserve_cours       = true,
-             reserve_cours_sigle = EXCLUDED.reserve_cours_sigle`,
-          [itemId, r.reserve_cours_sigle || null]
-        );
-      }
-
-      // 4. Lier la réponse à l'item créé
-      await client.query(
-        'UPDATE tbl_reponses SET item_id_cree = $1 WHERE id = $2',
-        [itemId, reponse.id]
-      );
-
-      // 5. Relier les pièces jointes déjà uploadées sur cette réponse
-      await PiecesJointesModel.lierItem(client, reponse.id, itemId);
-
-      await client.query('COMMIT');
-      return itemId;
-
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
   },
 
   // ═══════════════════════════════════════════════════════════
@@ -349,137 +232,6 @@ const ReponsesModel = {
     return rows[0];
   },
 
-  async insererNouvelAchatApresApprobation(reponse) {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      const raw  = reponse.reponses;
-      const data = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
-      const b = data.baseData     || {};
-      const s = data.specificData || {};
-
-      // 1. tbl_items
-      const { rows } = await client.query(
-        `INSERT INTO tbl_items (
-          formulaire_type, date_creation, priorite_demande,
-          titre_document, sous_titre, isbn_issn, editeur,
-          date_publication, source_information, categorie_document,
-          format_support, nombre_utilisateurs,
-          lien_plateforme, nombre_titres_inclus, periode_couverte,
-          prix_cad, devise_originale, prix_devise_originale,
-          fonds_budgetaire, fonds_sn_projet,
-          bibliotheque, localisation_emplacement, demandeur,
-          personne_a_aviser_nom,
-          personne_a_aviser_courriel,
-          format_pret_numerique,
-          statut_bibliotheque, statut_acq, note_commentaire,
-          catalogue, creation_notice_dtdm,
-          note_dtdm, note_interne_dtdm, utilisateur_modification, date_modification
-        ) VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-          $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-          $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,
-          $31,$32,$33,$34,NOW()
-        ) RETURNING item_id`,
-        [
-          'Nouvel achat unique',                                                     // $1
-          new Date(),                                                                // $2
-          b.priorite_demande             || 'Régulier',                             // $3
-          b.titre_document               || null,                                   // $4
-          b.sous_titre                   || null,                                   // $5
-          b.isbn_issn                    || null,                                   // $6
-          b.editeur                      || null,                                   // $7
-          b.date_publication             || null,                                   // $8
-          b.source_information           || null,                                   // $9
-          b.categorie_document           || null,                                   // $10
-          b.format_support               || null,                                   // $11
-          b.nombre_utilisateurs          || null,                                   // $12
-          b.lien_plateforme              || null,                                   // $13
-          b.nombre_titres_inclus         || null,                                   // $14
-          b.periode_couverte             || null,                                   // $15
-          b.prix_cad                     || null,                                   // $16
-          b.devise_originale             || null,                                   // $17
-          b.prix_devise_originale        || null,                                   // $18
-          b.fonds_budgetaire             || null,                                   // $19
-          b.fonds_sn_projet              || null,                                   // $20
-          b.bibliotheque                 || null,                                   // $21
-          b.localisation_emplacement     || null,                                   // $22
-          reponse.usager_nom             || b.demandeur                  || null,   // $23
-          b.personne_a_aviser_nom        || null,                                   // $24
-          b.personne_a_aviser_courriel   || reponse.usager_courriel      || null,   // $25
-          b.format_pret_numerique        || null,                                   // $26
-          'Soumis aux ACQ : Formulaire complété et prêt à être transmis aux Acquisitions.', // $27
-          'En attente de traitement aux ACQ',                                       // $28
-          b.note_commentaire             || null,                                   // $29
-          b.catalogue                    || null,                                   // $30
-          b.creation_notice_dtdm === true || b.creation_notice_dtdm === 'true',    // $31
-          b.note_dtdm                    || null,                                   // $32
-          b.note_interne_dtdm            || null,                                   // $33
-          reponse.usager_nom             || null                                    // $34
-        ]
-      );
-      const itemId = rows[0].item_id;
-
-      // Auteur ou autrice (tbl_items.auteur) : ignoré tant que la colonne n'existe pas en base.
-      const avecAuteur = await filterToTableColumns('tbl_items', { auteur: b.auteur || null }, ['item_id']);
-      if ('auteur' in avecAuteur) {
-        await client.query('UPDATE tbl_items SET auteur = $1 WHERE item_id = $2', [avecAuteur.auteur, itemId]);
-      }
-
-      // Répartition entre plusieurs fonds budgétaires, si l'usager en a ajouté (fonds partagés)
-      await ItemsFondsModel.remplacerRepartition(client, itemId, b.fonds_repartition);
-
-      // 2. tbl_nouvel_achat_unique
-      await client.query(
-        `INSERT INTO tbl_nouvel_achat_unique (
-          item_id, id_ressource, projets_speciaux,
-          type_monographie, format_electronique,
-          reserve_cours, reserve_cours_sigle, reserve_cours_session,
-          reserve_cours_enseignant, bordereau_imprime
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-        ON CONFLICT (item_id) DO UPDATE SET
-          id_ressource             = EXCLUDED.id_ressource,
-          type_monographie         = EXCLUDED.type_monographie,
-          format_electronique      = EXCLUDED.format_electronique,
-          reserve_cours            = EXCLUDED.reserve_cours,
-          reserve_cours_sigle      = EXCLUDED.reserve_cours_sigle,
-          reserve_cours_session    = EXCLUDED.reserve_cours_session,
-          reserve_cours_enseignant = EXCLUDED.reserve_cours_enseignant`,
-        [
-          itemId,
-          s.id_ressource                                       || null,  // $2
-          s.projets_speciaux                                   || null,  // $3
-          s.type_monographie                                   || null,  // $4
-          s.format_electronique                                || null,  // $5
-          s.reserve_cours === true || s.reserve_cours === 'true',        // $6
-          s.reserve_cours ? (s.reserve_cours_sigle      || null) : null, // $7
-          s.reserve_cours ? (s.reserve_cours_session    || null) : null, // $8
-          s.reserve_cours ? (s.reserve_cours_enseignant || null) : null, // $9
-          s.bordereau_imprime                                  || null   // $10
-        ]
-      );
-
-      // Lier la réponse à l'item créé
-      await client.query(
-        'UPDATE tbl_reponses SET item_id_cree = $1 WHERE id = $2',
-        [itemId, reponse.id]
-      );
-
-      // Relier les pièces jointes déjà uploadées sur cette réponse
-      await PiecesJointesModel.lierItem(client, reponse.id, itemId);
-
-      await client.query('COMMIT');
-      return itemId;
-
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
-  },
-
   // ═══════════════════════════════════════════════════════════
   // GÉNÉRIQUE — nouveaux types de formulaires
   // ═══════════════════════════════════════════════════════════
@@ -495,51 +247,9 @@ const ReponsesModel = {
     return rows[0];
   },
 
-  async insererApresApprobation(reponse) {
-    const { insertItemBase, insertSpecificData } = require('./import');
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      const raw  = reponse.reponses;
-      const data = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
-      const baseData     = { formulaire_type: reponse.type_formulaire, ...(data.baseData || {}) };
-      const specificData = data.specificData || {};
-      const itemId = await insertItemBase(client, baseData);
-      await insertSpecificData(client, itemId, reponse.type_formulaire, specificData);
-      await ItemsFondsModel.remplacerRepartition(client, itemId, baseData.fonds_repartition);
-      await client.query(
-        'UPDATE tbl_reponses SET item_id_cree = $1 WHERE id = $2',
-        [itemId, reponse.id]
-      );
-      // Relier les pièces jointes déjà uploadées sur cette réponse
-      await PiecesJointesModel.lierItem(client, reponse.id, itemId);
-      await client.query('COMMIT');
-      return itemId;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
-  },
-
   // ═══════════════════════════════════════════════════════════
-  // COMMUN — décision + lecture
+  // COMMUN — lecture
   // ═══════════════════════════════════════════════════════════
-
-  async updateDecision({ id, statut_approbation, courriel_admin, commentaire_admin }) {
-    const { rows } = await pool.query(
-      `UPDATE tbl_reponses
-       SET statut_approbation = $1,
-           courriel_admin     = $2,
-           date_traitement    = NOW(),
-           commentaire_admin  = $3
-       WHERE id = $4
-       RETURNING *`,
-      [statut_approbation, courriel_admin, commentaire_admin, id]
-    );
-    return rows[0] || null;
-  },
 
   async findAll({ type = null, statut = null, suivi_acq = null, limit = 20, offset = 0 }) {
     const params     = [];
@@ -662,6 +372,17 @@ const ReponsesModel = {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+
+      // Verrou sur la réponse : deux appels simultanés (double clic, matérialisation automatique
+      // en même temps que POST /:id/creer-item) attendent ici ; le second voit item_id_cree
+      // déjà renseigné et renvoie le même item au lieu d'en créer un deuxième.
+      const { rows: verrou } = await client.query(
+        'SELECT item_id_cree FROM tbl_reponses WHERE id = $1 FOR UPDATE', [reponseId]
+      );
+      if (verrou[0]?.item_id_cree) {
+        await client.query('COMMIT');
+        return verrou[0].item_id_cree;
+      }
 
       // Sécurité : ne garder que des clés qui sont de vraies colonnes de tbl_items — cleanBase
       // vient du JSON de la demande stockée par l'usager, voir util/db-columns.js.

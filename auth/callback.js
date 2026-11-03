@@ -39,8 +39,6 @@ async function handleCallback(req, res) {
       prenom,
       groupe: groupeForRole(role),
       role,
-      // TEMPORAIRE — debug, à retirer : toutes les claims brutes du ID token Azure AD
-      azureRaw: userInfo,
     });
 
     // Connexion lancée en popup depuis le formulaire public embarqué (voir routes/auth.js).

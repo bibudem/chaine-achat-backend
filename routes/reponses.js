@@ -2,7 +2,7 @@ const express             = require('express');
 const router              = express.Router();
 const ReponsesController  = require('../controllers/reponses');
 const PiecesJointesController = require('../controllers/pieces-jointes');
-const { requireAuth, requireRole } = require('../middleware/jwt.middleware');
+const { requireAuth, requireRole, requirePersonnel, requireAdmin } = require('../middleware/jwt.middleware');
 
 // Équipe de tri des suggestions publiques — Admin/SuperAdmin aussi, pour la supervision.
 const ROLES_TRI = ['TechDoc', 'Admin', 'SuperAdmin'];
@@ -10,8 +10,7 @@ const ROLES_TRI = ['TechDoc', 'Admin', 'SuperAdmin'];
 // ─────────────────────────────────────────────────────────────
 // SUGGESTION D'ACHAT
 // ─────────────────────────────────────────────────────────────
-router.post('/suggestion',          ReponsesController.createSuggestion);
-router.get('/suggestion_usagers',  ReponsesController.decisionSuggestion);
+router.post('/suggestion', requirePersonnel,          ReponsesController.createSuggestion);
 
 // ─────────────────────────────────────────────────────────────
 // SUGGESTION PUBLIQUE (communauté UdeM) + TRI PAR L'ÉQUIPE TECHDOC
@@ -26,66 +25,53 @@ router.put('/:id/techdoc-transmise', requireAuth, requireRole('Admin', 'SuperAdm
 // ─────────────────────────────────────────────────────────────
 // NOUVEL ACHAT UNIQUE
 // ─────────────────────────────────────────────────────────────
-router.post('/nouvel-achat',        ReponsesController.createNouvelAchat);
-router.get('/decision-achat',       ReponsesController.decisionNouvelAchat);
+router.post('/nouvel-achat', requirePersonnel,        ReponsesController.createNouvelAchat);
 
 // ─────────────────────────────────────────────────────────────
 // NOUVEL ABONNEMENT
 // ─────────────────────────────────────────────────────────────
-router.post('/nouvel-abonnement',   ReponsesController.createNouvelAbonnement);
+router.post('/nouvel-abonnement', requirePersonnel,   ReponsesController.createNouvelAbonnement);
 
 // ─────────────────────────────────────────────────────────────
 // MODIFICATION CCOL
 // ─────────────────────────────────────────────────────────────
-router.post('/modification-ccol',   ReponsesController.createModificationCcol);
+router.post('/modification-ccol', requirePersonnel,   ReponsesController.createModificationCcol);
 
 // ─────────────────────────────────────────────────────────────
 // PEB TIPASA NUMÉRIQUE
 // ─────────────────────────────────────────────────────────────
-router.post('/peb-tipasa',          ReponsesController.createPebTipasa);
+router.post('/peb-tipasa', requirePersonnel,          ReponsesController.createPebTipasa);
 
 // ─────────────────────────────────────────────────────────────
 // REQUÊTE ACQ
 // ─────────────────────────────────────────────────────────────
-router.post('/requete-accessibilite', ReponsesController.createRequeteAcq);
-
-// ─────────────────────────────────────────────────────────────
-// DÉCISION GÉNÉRIQUE (nouveaux types)
-// GET /reponses/decision?id=&action=approuver|refuser&courriel_admin=
-// ─────────────────────────────────────────────────────────────
-router.get('/decision',             ReponsesController.decisionFormulaire);
+router.post('/requete-accessibilite', requirePersonnel, ReponsesController.createRequeteAcq);
 
 // ─────────────────────────────────────────────────────────────
 // CRÉER L'ITEM DEPUIS UNE RÉPONSE (idempotent)
 // POST /reponses/:id/creer-item
 // ─────────────────────────────────────────────────────────────
-router.post('/:id/creer-item',      ReponsesController.creerItem);
+router.post('/:id/creer-item', requirePersonnel,      ReponsesController.creerItem);
 
 // ─────────────────────────────────────────────────────────────
 // PIÈCES JOINTES (courriel .msg/.eml, PDF, Excel)
 // ─────────────────────────────────────────────────────────────
-router.post('/:id/pieces-jointes',
+router.post('/:id/pieces-jointes', requirePersonnel,
   PiecesJointesController.uploadMiddleware,
   PiecesJointesController.upload);
-router.get('/:id/pieces-jointes',              PiecesJointesController.list);
-router.get('/pieces-jointes/:pieceId/telecharger', PiecesJointesController.download);
-router.delete('/pieces-jointes/:pieceId',      PiecesJointesController.remove);
-
-// ─────────────────────────────────────────────────────────────
-// DÉCISION API JSON (pour n8n)
-// PUT /reponses/:id/decision
-// ─────────────────────────────────────────────────────────────
-router.put('/:id/decision',         ReponsesController.decisionApi);
+router.get('/:id/pieces-jointes', requirePersonnel,              PiecesJointesController.list);
+router.get('/pieces-jointes/:pieceId/telecharger', requirePersonnel, PiecesJointesController.download);
+router.delete('/pieces-jointes/:pieceId', requirePersonnel,      PiecesJointesController.remove);
 
 // ─────────────────────────────────────────────────────────────
 // LECTURE (commun)
 // ─────────────────────────────────────────────────────────────
-router.get('/pending',              ReponsesController.getPending);
-router.get('/profil',               ReponsesController.getByEmail);
-router.get('/public',               ReponsesController.getAllPublic);
-router.get('/',                     ReponsesController.getAll);
-router.get('/:id',                  ReponsesController.getById);
+router.get('/pending', requirePersonnel,              ReponsesController.getPending);
+router.get('/profil', requirePersonnel,               ReponsesController.getByEmail);
+router.get('/public', requirePersonnel,               ReponsesController.getAllPublic);
+router.get('/', requirePersonnel,                     ReponsesController.getAll);
+router.get('/:id', requirePersonnel,                  ReponsesController.getById);
 router.patch('/:id',                requireAuth, ReponsesController.patchReponses);
-router.delete('/:id',               ReponsesController.supprimer);
+router.delete('/:id', requirePersonnel,               ReponsesController.supprimer);
 
 module.exports = router;

@@ -21,15 +21,8 @@ const N8N_NOUVEL_ABONNEMENT_URL   = config.n8n.nouvelAbonnementUrl;
 const N8N_MODIFICATION_CCOL_URL   = config.n8n.modificationCcolUrl;
 const N8N_PEB_TIPASA_URL          = config.n8n.pebTipasaUrl;
 const N8N_REQUETE_ACQ_URL         = config.n8n.requeteAcqUrl;
-const N8N_SPRINGER_URL            = config.n8n.springerUrl;
 const N8N_TRI_DECISION_URL        = config.n8n.triDecisionUrl;
 const N8N_SUGGESTION_PUBLIQUE_URL = config.n8n.suggestionPubliqueUrl;
-
-function redirect(res, url) {
-  const decodedUrl = decodeURIComponent(url);
-  res.writeHead(302, { Location: decodedUrl });
-  return res.end();
-}
 
 // Matérialise immédiatement l'item dans tbl_items (au lieu d'attendre l'ouverture de la
 // notification) afin que la demande soit visible tout de suite dans Recherche/Rapport,
@@ -225,7 +218,8 @@ const ReponsesController = {
     // Suivi interne de l'équipe TechDoc — saisi en même temps que la décision de tri (voir
     // tri-suggestions.component.ts), reporté dans tbl_reponses.reponses pour suivre la
     // suggestion même si elle n'est pas (encore) matérialisée en item.
-    // Réservé à l'équipe de tri : ignoré quand un Admin rend la décision (supervision).
+    // Réservé à l'équipe de tri : quand un Admin rend la décision (supervision), le suivi
+    // TechDoc déjà enregistré est conservé tel quel (voir majSuiviTri dans le modèle).
     const suiviTri = ROLES_SUIVI_TRI.includes(req.user?.role);
     const techdocSuggestionTransmise = suiviTri && !!req.body?.techdoc_suggestion_transmise;
     const techdocTriNotes            = suiviTri ? ((req.body?.techdoc_tri_notes || '').trim() || null) : null;
@@ -247,7 +241,7 @@ const ReponsesController = {
       const parNom = `${req.user.prenom || ''} ${req.user.nom || ''}`.trim() || req.user.email;
       const { updated, existant } = await ReponsesModel.decisionTri({
         id, decision, commentaire, par: req.user.email, parNom,
-        techdocSuggestionTransmise, techdocTriNotes,
+        techdocSuggestionTransmise, techdocTriNotes, majSuiviTri: suiviTri,
       });
 
       if (!updated) {
@@ -299,41 +293,6 @@ const ReponsesController = {
     } catch (err) {
       console.error('[techdoc] majTechdocTransmise:', err);
       return res.status(500).json({ success: false, error: "Erreur lors de l'enregistrement." });
-    }
-  },
-
-  // GET /reponses/decision-suggestion?id=&action=approuver|refuser&courriel_admin=
-  async decisionSuggestion(req, res) {
-    const { id, action, courriel_admin } = req.query;
-
-    if (!id || !action)                             return res.status(400).send('Paramètres manquants.');
-    if (!['approuver', 'refuser'].includes(action)) return res.status(400).send('Action invalide.');
-
-    try {
-      const statut  = action === 'approuver' ? 'approuve' : 'refuse';
-
-      const reponse = await ReponsesModel.updateDecision({
-        id,
-        statut_approbation: statut,
-        courriel_admin:     courriel_admin || null,
-        commentaire_admin:  action === 'approuver'
-          ? "Approuvé par l'administrateur"
-          : "Refusé par l'administrateur"
-      });
-
-      if (!reponse) return res.status(404).send('Réponse introuvable.');
-
-      let itemId = reponse.item_id_cree || null;
-      if (action === 'approuver' && !reponse.item_id_cree) {
-        itemId = await ReponsesModel.insererSuggestionApresApprobation(reponse);
-      }
-
-      console.log(`[suggestion] décision [${encodeURIComponent(statut)}] — #${encodeURIComponent(id)} — item_id: ${itemId}`);
-      return redirect(res, `${APP_URL}/items?decision=${encodeURIComponent(statut)}&ref=${encodeURIComponent(id)}`);
-
-    } catch (err) {
-      console.error('[suggestion] decisionSuggestion:', err);
-      return redirect(res, `${APP_URL}/items?decision=erreur&ref=${encodeURIComponent(id)}`);
     }
   },
 
@@ -390,51 +349,12 @@ const ReponsesController = {
     }
   },
 
-  // GET /reponses/decision-achat?id=&action=approuver|refuser&courriel_admin=
-  async decisionNouvelAchat(req, res) {
-    const { id, action, courriel_admin } = req.query;
-
-    if (!id || !action)  return res.status(400).send('Paramètres manquants : ' + JSON.stringify(req.params));
-    if (!['approuver', 'refuser'].includes(action)) return res.status(400).send('Action invalide.');
-
-    try {
-      const statut  = action === 'approuver' ? 'approuve' : 'refuse';
-
-      const reponse = await ReponsesModel.updateDecision({
-        id,
-        statut_approbation: statut,
-        courriel_admin:     courriel_admin || null,
-        commentaire_admin:  action === 'approuver'
-          ? "Approuvé par l'administrateur"
-          : "Refusé par l'administrateur"
-      });
-
-      if (!reponse) return res.status(404).send('Réponse introuvable.');
-
-      let itemId = reponse.item_id_cree || null;
-      if (action === 'approuver' && !reponse.item_id_cree) {
-        itemId = await ReponsesModel.insererNouvelAchatApresApprobation(reponse);
-      }
-
-      console.log(`[nouvel-achat] décision [${statut}] — #${id} — item_id: ${itemId}`);
-      return redirect(
-                    res,
-                    `${APP_URL}/items?decision=${encodeURIComponent(statut)}&ref=${encodeURIComponent(id)}`
-                  );
-
-    } catch (err) {
-      console.error('[nouvel-achat] decisionNouvelAchat:', err);
-      return redirect(res, `${APP_URL}/items?decision=erreur&ref=${encodeURIComponent(id)}`);
-    }
-  },
-
   // ═══════════════════════════════════════════════════════════
   // NOUVEAUX TYPES DE FORMULAIRES
   // POST /reponses/nouvel-abonnement
   // POST /reponses/modification-ccol
   // POST /reponses/peb-tipasa
   // POST /reponses/requete-acq
-  // POST /reponses/springer
   // ═══════════════════════════════════════════════════════════
 
   async createNouvelAbonnement(req, res) {
@@ -451,105 +371,6 @@ const ReponsesController = {
 
   async createRequeteAcq(req, res) {
     return _creerFormulaire(req, res, 'Requête ACQ Accessibilité', N8N_REQUETE_ACQ_URL, 'requete-acq');
-  },
-
-  async createSpringer(req, res) {
-    return _creerFormulaire(req, res, 'Springer', N8N_SPRINGER_URL, 'springer');
-  },
-
-  // GET /reponses/decision?id=&action=approuver|refuser&courriel_admin=
-  async decisionFormulaire(req, res) {
-    const { id, action, courriel_admin } = req.query;
-    if (!id || !action) return res.status(400).send('Paramètres manquants.');
-    if (!['approuver', 'refuser'].includes(action)) return res.status(400).send('Action invalide.');
-    try {
-      const statut  = action === 'approuver' ? 'approuve' : 'refuse';
-      const reponse = await ReponsesModel.updateDecision({
-        id,
-        statut_approbation: statut,
-        courriel_admin:     courriel_admin || null,
-        commentaire_admin:  action === 'approuver'
-          ? "Approuvé par l'administrateur"
-          : "Refusé par l'administrateur"
-      });
-      if (!reponse) return res.status(404).send('Réponse introuvable.');
-      let itemId = reponse.item_id_cree || null;
-      if (action === 'approuver' && !reponse.item_id_cree) {
-        const type = reponse.type_formulaire;
-        if (type === 'Nouvel achat unique') {
-          itemId = await ReponsesModel.insererNouvelAchatApresApprobation(reponse);
-        } else if (type === "Suggestion d'achat - Usager") {
-          itemId = await ReponsesModel.insererSuggestionApresApprobation(reponse);
-        } else {
-          itemId = await ReponsesModel.insererApresApprobation(reponse);
-        }
-      }
-      console.log(`[${reponse.type_formulaire}] décision [${statut}] — #${id} — item_id: ${itemId}`);
-      return redirect(res, `${APP_URL}/items?decision=${encodeURIComponent(statut)}&ref=${encodeURIComponent(id)}`);
-    } catch (err) {
-      console.error('[decisionFormulaire]:', err);
-      return redirect(res, `${APP_URL}/items?decision=erreur&ref=${encodeURIComponent(id)}`);
-    }
-  },
-
-  // ═══════════════════════════════════════════════════════════
-  // DÉCISION API — JSON (pour n8n, pas de redirect navigateur)
-  // PUT /reponses/:id/decision
-  // Body : { action: "approuver"|"refuser", courriel_admin: "..." }
-  // ═══════════════════════════════════════════════════════════
-  async decisionApi(req, res) {
-    const { id } = req.params;
-    const { action, courriel_admin } = req.body;
-
-    if (!id || !action)
-      return res.status(400).json({ success: false, error: 'Paramètres manquants (id, action).' });
-    if (!['approuver', 'refuser'].includes(action))
-      return res.status(400).json({ success: false, error: 'Action invalide.' });
-
-    try {
-      const statut = action === 'approuver' ? 'approuve' : 'refuse';
-
-      const reponse = await ReponsesModel.updateDecision({
-        id,
-        statut_approbation: statut,
-        courriel_admin:     courriel_admin || null,
-        commentaire_admin:  action === 'approuver'
-          ? "Approuvé par l'administrateur"
-          : "Refusé par l'administrateur"
-      });
-
-      if (!reponse)
-        return res.status(404).json({ success: false, error: 'Réponse introuvable.' });
-
-      let itemId = reponse.item_id_cree || null;
-      if (action === 'approuver' && !reponse.item_id_cree) {
-        const type = reponse.type_formulaire;
-        if (type === 'Nouvel achat unique') {
-          itemId = await ReponsesModel.insererNouvelAchatApresApprobation(reponse);
-        } else if (type === "Suggestion d'achat - Usager") {
-          itemId = await ReponsesModel.insererSuggestionApresApprobation(reponse);
-        } else {
-          itemId = await ReponsesModel.insererApresApprobation(reponse);
-        }
-      }
-
-      const raw  = reponse.reponses;
-      const data = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
-      const base = data.baseData || data;
-
-      return res.json({
-        success: true,
-        statut,
-        itemId,
-        nom:      reponse.usager_nom      || base.demandeur                    || '',
-        courriel: reponse.usager_courriel || base.personne_a_aviser_courriel || '',
-        titre:    base.titre_document     || 'Sans titre'
-      });
-
-    } catch (err) {
-      console.error('[decisionApi]', err);
-      return res.status(500).json({ success: false, error: publicError(err) });
-    }
   },
 
   // ═══════════════════════════════════════════════════════════
@@ -574,7 +395,7 @@ const ReponsesController = {
   // LECTURE (commun)
   // ═══════════════════════════════════════════════════════════
 
-  // GET /reponses/pending — réponses sans décision ACQ (item_id_cree IS NULL)
+  // GET /reponses/profil?email= — historique des demandes d'un demandeur (Mes demandes)
   async getByEmail(req, res) {
     const { email } = req.query;
     if (!email) return res.status(400).json({ error: 'Paramètre email requis.' });
@@ -625,7 +446,9 @@ const ReponsesController = {
   },
 
   async getAll(req, res) {
-    const { type, statut, suivi_acq, page = 1, limit = 20 } = req.query;
+    const { type, statut, suivi_acq } = req.query;
+    const page   = Math.max(1, parseInt(req.query.page) || 1);
+    const limit  = Math.min(500, Math.max(1, parseInt(req.query.limit) || 20));
     const offset = (page - 1) * limit;
     try {
       const { rows, total } = await ReponsesModel.findAll({ type, statut, suivi_acq, limit, offset });

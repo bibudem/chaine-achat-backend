@@ -125,7 +125,13 @@ async function bufferToRows(buffer) {
 
 // ==================== IMPORT EXCEL ====================
 async function importExcel(req, res) {
-  const client = await pool.connect();
+  let client;
+  try {
+    client = await pool.connect();
+  } catch (err) {
+    console.error('❌ Connexion à la base impossible:', err);
+    return res.status(503).json({ success: false, error: 'Base de données indisponible.' });
+  }
 
   try {
     const formulaireType = decodeURIComponent(req.params.type);
@@ -448,8 +454,9 @@ async function upsertRow(client, row, formulaireType, config) {
     }
   }
 
-  // Fonds partagés : ne fait rien si fondsRepartition est undefined (pas de partage détecté
-  // dans cette ligne) — voir ItemsFondsModel.remplacerRepartition.
+  // Fonds partagés : remplace la répartition de l'item ; sans partage détecté dans cette ligne
+  // (fondsRepartition undefined), l'ancienne répartition est effacée — voir
+  // ItemsFondsModel.remplacerRepartition.
   try {
     await ItemsFondsModel.remplacerRepartition(client, itemId, fondsRepartition);
   } catch (err) {
@@ -517,10 +524,10 @@ function buildFondsRepartition(row) {
     if (!fonds_budgetaire || !prix_cad || !devise_originale || !prix_devise_originale) continue;
     lignes.push({
       fonds_budgetaire,
-      prix_cad:              parseFloat(prix_cad),
+      prix_cad:              parseNombre(prix_cad),
       devise_originale,
-      prix_devise_originale: parseFloat(prix_devise_originale),
-      pourcentage:           pctArr[i] ? parseFloat(pctArr[i]) : null,
+      prix_devise_originale: parseNombre(prix_devise_originale),
+      pourcentage:           pctArr[i] ? parseNombre(pctArr[i]) : null,
     });
   }
   if (lignes.length < 2) return undefined;
@@ -557,9 +564,9 @@ function buildBaseData(row, formulaireType) {
     bibliotheque:                 row['bibliotheque']                || null,
     localisation_emplacement:     row['localisation_emplacement']    || null,
     demandeur:                    row['demandeur']                   || null,
-    prix_cad:                     premierSegment(row['prix_cad']) ? parseFloat(premierSegment(row['prix_cad'])) : null,
+    prix_cad:                     parseNombre(premierSegment(row['prix_cad'])),
     devise_originale:             premierSegment(row['devise_originale']),
-    prix_devise_originale:        premierSegment(row['prix_devise_originale']) ? parseFloat(premierSegment(row['prix_devise_originale'])) : null,
+    prix_devise_originale:        parseNombre(premierSegment(row['prix_devise_originale'])),
     personne_a_aviser_nom:        row['personne_a_aviser_nom']       || null,
     personne_a_aviser_courriel:   row['personne_a_aviser_courriel']  || null,
     source_information:           row['source_information']          || null,
@@ -591,6 +598,14 @@ function cleanEmptyFields(obj) {
 }
 
 // ==================== HELPER : PARSE BOOLÉEN ====================
+/** Nombre d'une cellule Excel : accepte la virgule décimale (« 12,50 » → 12.5) et les
+ *  espaces de milliers ; null si vide ou non numérique. */
+function parseNombre(val) {
+  if (val == null || val === '') return null;
+  const n = parseFloat(String(val).replace(/\s/g, '').replace(',', '.'));
+  return Number.isNaN(n) ? null : n;
+}
+
 function parseBool(val) {
   if (val == null) return false;
   return ['oui', 'yes', '1', 'true', 'vrai'].includes(String(val).toLowerCase().trim());

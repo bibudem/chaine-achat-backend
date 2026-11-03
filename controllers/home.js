@@ -29,7 +29,7 @@ const sendError = (res, err, context = '') => {
 };
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   GET /home/all?period=7days|30days|90days
+   GET /home/all?period=<année>|all
    Dashboard + graphiques en un seul appel
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 exports.getAllData = async (req, res) => {
@@ -52,7 +52,7 @@ exports.getAllData = async (req, res) => {
 };
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   GET /home/dashboard?period=7days|30days|90days
+   GET /home/dashboard?period=<année>|all
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 exports.getCount = async (req, res) => {
   try {
@@ -92,7 +92,7 @@ exports.getTypeCounts = async (req, res) => {
 };
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   GET /home/graph?period=7days|30days|90days
+   GET /home/graph?period=<année>|all
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 exports.getGraphiqueDonnees = async (req, res) => {
   try {

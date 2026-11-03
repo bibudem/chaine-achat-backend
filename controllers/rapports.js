@@ -1,4 +1,5 @@
 // controllers/rapports.js
+const { publicError } = require('../util/errors');
 const rapportsModel = require('../models/rapports');
 
 function pick(obj, keys) {
@@ -19,7 +20,7 @@ function success(res, data, extra = {}) {
 function error(res, e) {
   return res.status(500).json({
     success: false,
-    message: e.message,
+    message: publicError(e),
     timestamp: new Date().toISOString()
   });
 }
@@ -36,7 +37,7 @@ exports.getStatistiquesGenerales = async (req, res) => {
 };
 
 // ======================
-// DÉTAILLÉ (seul endpoint utilisé par le frontend)
+// DÉTAILLÉ (page Rapports ; Suivis des bibliothèques utilise /suivis-bibliotheques)
 // Tous les regroupements (par type, bibliothèque, etc.)
 // sont calculés côté Angular sur ces données.
 // ======================

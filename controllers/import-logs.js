@@ -6,7 +6,7 @@ const ImportLogsController = {
   async getAll(req, res) {
     try {
       const page           = Math.max(1, parseInt(req.query.page)  || 1);
-      const limit          = Math.min(100, parseInt(req.query.limit) || 20);
+      const limit          = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
       const formulaire_type = req.query.type        || null;
       const statut          = req.query.statut      || null;
       const utilisateur     = req.query.utilisateur || null;
