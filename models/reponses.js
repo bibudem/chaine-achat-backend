@@ -405,6 +405,12 @@ const ReponsesModel = {
       );
       const itemId = rows[0].item_id;
 
+      // Auteur ou autrice (tbl_items.auteur) : ignoré tant que la colonne n'existe pas en base.
+      const avecAuteur = await filterToTableColumns('tbl_items', { auteur: b.auteur || null }, ['item_id']);
+      if ('auteur' in avecAuteur) {
+        await client.query('UPDATE tbl_items SET auteur = $1 WHERE item_id = $2', [avecAuteur.auteur, itemId]);
+      }
+
       // Répartition entre plusieurs fonds budgétaires, si l'usager en a ajouté (fonds partagés)
       await ItemsFondsModel.remplacerRepartition(client, itemId, b.fonds_repartition);
 

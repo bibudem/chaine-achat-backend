@@ -234,8 +234,9 @@ async function rapportDetaille(filters = {}, limit = 100, offset = 0) {
       racq.acq_date_demande_editeur,
       racq.acq_date_livraison_estimee,
 
-      -- Suggestion d'achat — Usager
-      sa.auteur,
+      -- Suggestion d'achat — Usager (auteur : sinon celui de tbl_items, ex. Nouvel achat unique ;
+      -- to_jsonb(i) tolère l'absence de la colonne tbl_items.auteur)
+      COALESCE(sa.auteur, to_jsonb(i)->>'auteur') AS auteur,
       sa.usager_nom,
       sa.usager_statut,
       sa.usager_faculte,
