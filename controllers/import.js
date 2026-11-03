@@ -375,6 +375,12 @@ async function findExistingItemId(client, formulaireType, titre_document, isbn_i
 async function upsertRow(client, row, formulaireType, config) {
   const baseData    = buildBaseData(row, formulaireType);
 
+  // Modification et CCOL : Période / volumaison, ou à défaut l'ancienne « Date de début
+  // d'abonnement » (migration Mentor).
+  if (formulaireType === 'Modification et CCOL') {
+    baseData.periode_couverte = row['periode_couverte'] || row['date_debut_abonnement'] || null;
+  }
+
   // Fonds partagés (Nouvel achat unique / Nouvel abonnement / Modification et CCOL
   // uniquement, voir buildFondsRepartition) — remplace prix_cad par la somme des fonds
   // quand un vrai partage est détecté dans la ligne (≥ 2 fonds valides).
@@ -677,13 +683,15 @@ const IMPORT_CONFIGS = {
     ],
     templateHeaders: [
       'priorite_demande', ...COMMON_HEADERS, ...FONDS_PARTAGES_HEADERS, 'projet_special',
-      'precision_demande', 'numero_oclc', 'date_debut_abonnement',
-       'usager_aviser_activation'
+      'precision_demande', 'numero_oclc', 'periode_couverte',
+      'usager_aviser_activation'
     ],
+    // « Date de début d'abonnement » n'existe plus pour ce formulaire (redondante avec
+    // Période / volumaison) : une colonne date_debut_abonnement d'un fichier Mentor est
+    // reprise dans periode_couverte — voir upsertRow.
     buildSpecificData: (row) => ({
       precision_demande:        row['precision_demande']        || '',
       numero_oclc:              row['numero_oclc']              || null,
-      date_debut_abonnement:    row['date_debut_abonnement']    || null,
       usager_aviser_activation: row['usager_aviser_activation'] || null,
     })
   },
