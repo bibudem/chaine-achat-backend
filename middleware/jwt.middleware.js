@@ -29,5 +29,8 @@ const ROLES_PERSONNEL = ['Admin', 'SuperAdmin', 'TDM', 'Employe', 'TechDocTri'];
 const requirePersonnel = [requireAuth, requireRole(...ROLES_PERSONNEL)];
 // Administration (même règle que AdminGuard / canEdit côté frontend).
 const requireAdmin = [requireAuth, requireRole('Admin', 'SuperAdmin')];
+// Écriture dans le sous-menu Configuration (fonds, bibliothèques, taux de change, utilisateurs) :
+// SuperAdmin seulement — l'Admin y a accès en lecture seule.
+const requireSuperAdmin = [requireAuth, requireRole('SuperAdmin')];
 
-module.exports = { requireAuth, requireRole, requirePersonnel, requireAdmin, ROLES_PERSONNEL };
+module.exports = { requireAuth, requireRole, requirePersonnel, requireAdmin, requireSuperAdmin, ROLES_PERSONNEL };
