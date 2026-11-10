@@ -96,14 +96,18 @@ const ReponsesModel = {
   // ── Tri des suggestions publiques (équipe TechDoc) ────────────────────────────
   // Liste unique (plus d'onglets côté UI) couvrant tout le cycle de vie d'une suggestion
   // publique, triée par ordre de priorité : à trier d'abord (plus anciennes en premier —
-  // premier arrivé, premier servi), puis acceptées mais pas encore complétées, puis
-  // soumises aux ACQ, puis refusées (plus récente décision en premier dans chaque groupe).
+  // premier arrivé, premier servi), puis triées mais pas encore soumises (à compléter), puis
+  // soumises aux ACQ (plus récente décision en premier dans chaque groupe).
+  // La décision de tri (Oui/Non) est un AVIS de l'équipe TechDoc : la décision finale revient
+  // aux ACQ. Une suggestion refusée se complète et se soumet donc comme une acceptée — d'où
+  // 'a_completer'/'soumise' sur les deux décisions ; 'refuse' filtre l'avis lui-même.
   // `statut` filtre sur l'une de ces quatre catégories ; sans lui, tout le cycle est retourné.
   // `ordre` ('date_desc' | 'date_asc') remplace cet ordre par un tri sur la date affichée
   // (date du tri, ou date de réception pour une suggestion pas encore triée).
   async findTri({ statut = null, search = null, ordre = null, limit = 20, offset = 0 } = {}) {
     const params     = [];
     const conditions = [`r.tri_statut IN ('a_trier', 'accepte', 'refuse')`];
+    const trieeSql      = `r.tri_statut IN ('accepte', 'refuse')`;
     const nonSoumiseSql = `COALESCE(i.statut_bibliotheque, r.reponses->>'statut_bibliotheque') IS DISTINCT FROM 'Soumettre aux ACQ'`;
     const soumiseSql    = `COALESCE(i.statut_bibliotheque, r.reponses->>'statut_bibliotheque') = 'Soumettre aux ACQ'`;
 
@@ -112,9 +116,9 @@ const ReponsesModel = {
     } else if (statut === 'refuse') {
       conditions.push(`r.tri_statut = 'refuse'`);
     } else if (statut === 'a_completer') {
-      conditions.push(`r.tri_statut = 'accepte' AND ${nonSoumiseSql}`);
+      conditions.push(`${trieeSql} AND ${nonSoumiseSql}`);
     } else if (statut === 'soumise') {
-      conditions.push(`r.tri_statut = 'accepte' AND ${soumiseSql}`);
+      conditions.push(`${trieeSql} AND ${soumiseSql}`);
     }
 
     if (search) {
@@ -126,12 +130,11 @@ const ReponsesModel = {
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
-    // Priorité : 0 = à trier, 1 = acceptée à compléter, 2 = soumise aux ACQ, 3 = refusée.
+    // Priorité : 0 = à trier, 1 = triée (acceptée ou refusée) à compléter, 2 = soumise aux ACQ.
     const priorite = `CASE
          WHEN r.tri_statut = 'a_trier' THEN 0
-         WHEN r.tri_statut = 'accepte' AND ${nonSoumiseSql} THEN 1
-         WHEN r.tri_statut = 'accepte' THEN 2
-         ELSE 3
+         WHEN ${nonSoumiseSql} THEN 1
+         ELSE 2
        END`;
     const dateAffichee = `COALESCE(r.tri_date, r."dateA")`;
     const orderBy = ordre === 'date_desc' ? `${dateAffichee} DESC, r.id DESC`
@@ -173,7 +176,9 @@ const ReponsesModel = {
   // Décision de tri. La condition tri_statut = 'a_trier' rend l'opération atomique : si deux
   // membres de l'équipe décident en même temps, seul le premier l'emporte — le second reçoit
   // la décision déjà prise (voir le contrôleur, qui répond alors 409).
-  async decisionTri({ id, decision, commentaire, par, parNom, techdocSuggestionTransmise, techdocTriNotes, majSuiviTri = true }) {
+  // « Suggestion d'achat transmise en bibliothèque » : cochée automatiquement dès qu'une
+  // décision (Oui ou Non) est rendue — plus de saisie manuelle.
+  async decisionTri({ id, decision, commentaire, par, parNom, techdocTriNotes, majSuiviTri = true }) {
     const { rows } = await pool.query(
       `UPDATE tbl_reponses
           SET tri_statut      = $2,
@@ -181,15 +186,15 @@ const ReponsesModel = {
               tri_par         = $4,
               tri_par_nom     = $5,
               tri_date        = NOW(),
-              -- Suivi TechDoc : mis à jour seulement par l'équipe de tri ($8), sinon conservé.
-              reponses        = reponses::jsonb || CASE WHEN $8::boolean THEN jsonb_build_object(
-                                   'techdoc_suggestion_transmise', $6::boolean,
-                                   'techdoc_tri_notes', $7::text
-                                 ) ELSE '{}'::jsonb END
+              -- Notes TechDoc : mises à jour seulement par l'équipe de tri ($7), sinon conservées.
+              reponses        = reponses::jsonb
+                                || jsonb_build_object('techdoc_suggestion_transmise', true)
+                                || CASE WHEN $7::boolean THEN jsonb_build_object('techdoc_tri_notes', $6::text)
+                                        ELSE '{}'::jsonb END
         WHERE id = $1
           AND tri_statut = 'a_trier'
         RETURNING id, usager_nom, usager_courriel, reponses, tri_statut, tri_commentaire, tri_par_nom, tri_date`,
-      [id, decision, commentaire, par, parNom, !!techdocSuggestionTransmise, techdocTriNotes || null, !!majSuiviTri]
+      [id, decision, commentaire, par, parNom, techdocTriNotes || null, !!majSuiviTri]
     );
     if (rows[0]) return { updated: rows[0] };
 
@@ -198,17 +203,6 @@ const ReponsesModel = {
       [id]
     );
     return { updated: null, existant: existant[0] || null };
-  },
-
-  async majTechdocTransmise(id, transmise) {
-    const { rows } = await pool.query(
-      `UPDATE tbl_reponses
-          SET reponses = reponses::jsonb || jsonb_build_object('techdoc_suggestion_transmise', $2::boolean)
-        WHERE id = $1 AND type_formulaire = 'Suggestion d''achat - Usager'
-        RETURNING id, (reponses::jsonb ->> 'techdoc_suggestion_transmise')::boolean AS techdoc_suggestion_transmise`,
-      [id, !!transmise]
-    );
-    return rows[0] || null;
   },
 
   // ═══════════════════════════════════════════════════════════
@@ -254,8 +248,8 @@ const ReponsesModel = {
   async findAll({ type = null, statut = null, suivi_acq = null, limit = 20, offset = 0 }) {
     const params     = [];
     // Suggestions publiques pas encore triées par l'équipe TechDoc ne concernent pas (ou pas
-    // encore) les ACQ — voir findTri plus bas. Celles refusées par l'équipe sont conservées ici
-    // (lecture seule, Admin/SuperAdmin) pour garder un historique des décisions de tri.
+    // encore) les ACQ — voir findTri plus bas. Celles refusées au tri suivent le circuit comme
+    // les acceptées : le refus est un avis, affiché aux ACQ qui prennent la décision finale.
     const conditions = [`(r.tri_statut IS NULL OR r.tri_statut IN ('accepte', 'refuse'))`];
 
     if (type) {
@@ -558,6 +552,15 @@ const ReponsesModel = {
     return rows[0] || null;
   },
 
+  // Commentaire de la décision de tri (pour les ACQ), modifiable depuis le formulaire de
+  // complétion — voir patchReponses.
+  async majTriCommentaire(id, commentaire) {
+    await pool.query(
+      `UPDATE tbl_reponses SET tri_commentaire = $2 WHERE id = $1 AND tri_statut IN ('accepte', 'refuse')`,
+      [id, commentaire]
+    );
+  },
+
   async updateReponses(id, reponses) {
     const { rowCount } = await pool.query(
       `UPDATE tbl_reponses
@@ -692,9 +695,10 @@ const ReponsesModel = {
       conditions.push(`(statut_bibliotheque = 'Soumettre aux ACQ' AND suivi_acq IS NOT NULL)`);
     }
 
-    // Suggestions publiques pas encore triées ou refusées par l'équipe TechDoc : jamais
-    // entrées dans le circuit des demandes, voir findTri.
-    conditions.push(`(tri_statut IS NULL OR tri_statut = 'accepte')`);
+    // Suggestions publiques pas encore triées par l'équipe TechDoc : pas encore entrées dans
+    // le circuit des demandes, voir findTri. Refusées au tri : simple avis, elles poursuivent
+    // le circuit comme les acceptées (décision finale aux ACQ).
+    conditions.push(`(tri_statut IS NULL OR tri_statut IN ('accepte', 'refuse'))`);
 
     const where = `WHERE ${conditions.join(' AND ')}`;
 

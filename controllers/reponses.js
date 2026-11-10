@@ -21,7 +21,6 @@ const N8N_NOUVEL_ABONNEMENT_URL   = config.n8n.nouvelAbonnementUrl;
 const N8N_MODIFICATION_CCOL_URL   = config.n8n.modificationCcolUrl;
 const N8N_PEB_TIPASA_URL          = config.n8n.pebTipasaUrl;
 const N8N_REQUETE_ACQ_URL         = config.n8n.requeteAcqUrl;
-const N8N_TRI_DECISION_URL        = config.n8n.triDecisionUrl;
 const N8N_SUGGESTION_PUBLIQUE_URL = config.n8n.suggestionPubliqueUrl;
 
 // Matérialise immédiatement l'item dans tbl_items (au lieu d'attendre l'ouverture de la
@@ -209,20 +208,22 @@ const ReponsesController = {
   },
 
   // PUT /reponses/:id/tri  { decision: 'accepte'|'refuse', commentaire }
-  // Le commentaire est obligatoire en cas de refus ; il est alors transmis au demandeur dans
-  // le courriel de refus (n8n /tri-decision). Une acceptation n'envoie pas de courriel.
+  // La décision de tri est un AVIS de l'équipe TechDoc : la décision finale revient aux ACQ.
+  // Dans les deux cas la suggestion se complète puis se soumet aux ACQ, qui voient l'avis et
+  // son commentaire (obligatoire en cas de refus). Aucun courriel au demandeur à cette étape :
+  // il reçoit la confirmation de fin de traitement des ACQ.
   async decisionTri(req, res) {
     const { id } = req.params;
     const decision    = req.body?.decision;
     const commentaire = (req.body?.commentaire || '').trim() || null;
-    // Suivi interne de l'équipe TechDoc — saisi en même temps que la décision de tri (voir
-    // tri-suggestions.component.ts), reporté dans tbl_reponses.reponses pour suivre la
+    // Notes internes de l'équipe TechDoc — saisies en même temps que la décision de tri (voir
+    // tri-suggestions.component.ts), reportées dans tbl_reponses.reponses pour suivre la
     // suggestion même si elle n'est pas (encore) matérialisée en item.
-    // Réservé à l'équipe de tri : quand un Admin rend la décision (supervision), le suivi
-    // TechDoc déjà enregistré est conservé tel quel (voir majSuiviTri dans le modèle).
+    // Réservées à l'équipe de tri : quand un Admin rend la décision (supervision), les notes
+    // déjà enregistrées sont conservées (voir majSuiviTri dans le modèle). « Transmise en
+    // bibliothèque » est cochée automatiquement par le modèle, quel que soit le rôle.
     const suiviTri = ROLES_SUIVI_TRI.includes(req.user?.role);
-    const techdocSuggestionTransmise = suiviTri && !!req.body?.techdoc_suggestion_transmise;
-    const techdocTriNotes            = suiviTri ? ((req.body?.techdoc_tri_notes || '').trim() || null) : null;
+    const techdocTriNotes = suiviTri ? ((req.body?.techdoc_tri_notes || '').trim() || null) : null;
 
     if (!['accepte', 'refuse'].includes(decision)) {
       return res.status(400).json({ error: "Décision invalide (attendu : 'accepte' ou 'refuse')." });
@@ -241,7 +242,7 @@ const ReponsesController = {
       const parNom = `${req.user.prenom || ''} ${req.user.nom || ''}`.trim() || req.user.email;
       const { updated, existant } = await ReponsesModel.decisionTri({
         id, decision, commentaire, par: req.user.email, parNom,
-        techdocSuggestionTransmise, techdocTriNotes, majSuiviTri: suiviTri,
+        techdocTriNotes, majSuiviTri: suiviTri,
       });
 
       if (!updated) {
@@ -253,46 +254,13 @@ const ReponsesController = {
         });
       }
 
-      // Refus seulement : le demandeur est avisé tout de suite. Une suggestion acceptée ne
-      // déclenche aucun courriel au demandeur à cette étape — les ACQ sont avisés quand elle
-      // leur est soumise (événement 'suggestion-soumise-acq', voir patchReponses), puis le
-      // demandeur et l'équipe de tri reçoivent la confirmation de fin de traitement des ACQ.
-      if (decision === 'refuse') {
-        const data = typeof updated.reponses === 'string' ? JSON.parse(updated.reponses) : (updated.reponses || {});
-        await posterN8n(N8N_TRI_DECISION_URL, 'tri-decision', updated.id, {
-          reponse_id:      updated.id,
-          type_formulaire: "Suggestion d'achat - Usager",
-          decision,
-          commentaire,
-          usager_nom:      updated.usager_nom,
-          usager_courriel: updated.usager_courriel,
-          titre_document:  data.titre_document || null,
-          auteur:          data.auteur || null,
-        });
-      }
-
+      // Aucun courriel ici (acceptée ou refusée) : les ACQ sont avisés quand la suggestion leur
+      // est soumise (événement 'suggestion-soumise-acq', voir patchReponses), puis le demandeur
+      // et l'équipe de tri reçoivent la confirmation de fin de traitement des ACQ.
       return res.json({ success: true, data: updated });
     } catch (err) {
       console.error('[tri] decisionTri:', err);
       return res.status(500).json({ error: "Erreur lors de l'enregistrement de la décision." });
-    }
-  },
-
-  // PUT /reponses/:id/techdoc-transmise — étape de fin d'une suggestion pas encore
-  // matérialisée en item (sinon PUT /items/:id/techdoc-transmise). Admin/SuperAdmin.
-  async majTechdocTransmise(req, res) {
-    const id        = Number(req.params.id);
-    const transmise = req.body?.techdoc_suggestion_transmise;
-    if (!Number.isInteger(id) || typeof transmise !== 'boolean') {
-      return res.status(400).json({ success: false, error: 'Paramètres invalides.' });
-    }
-    try {
-      const updated = await ReponsesModel.majTechdocTransmise(id, transmise);
-      if (!updated) return res.status(404).json({ success: false, error: 'Suggestion introuvable.' });
-      return res.json({ success: true, data: updated });
-    } catch (err) {
-      console.error('[techdoc] majTechdocTransmise:', err);
-      return res.status(500).json({ success: false, error: "Erreur lors de l'enregistrement." });
     }
   },
 
@@ -506,27 +474,47 @@ const ReponsesController = {
       if (avant?.tri_statut && !ROLES_COMPLETER_SUGGESTION.includes(role)) {
         return res.status(403).json({ error: 'Seules l\'équipe de tri et les Admin peuvent modifier une suggestion publique.' });
       }
-      // Champs « TechDoc Tri » : réservés à l'équipe de tri — on conserve les valeurs existantes
-      // pour tout autre rôle (Suggestion d'achat, format plat).
-      if (!ROLES_SUIVI_TRI.includes(role)) {
-        const prec = typeof avant?.reponses === 'string' ? JSON.parse(avant.reponses) : (avant?.reponses || {});
-        for (const champ of ['techdoc_suggestion_transmise', 'techdoc_tri_notes']) {
-          if (champ in reponses || champ in prec) reponses[champ] = prec[champ] ?? null;
+      // Champs « TechDoc Tri » (Suggestion d'achat, format plat) : « transmise en bibliothèque »
+      // est gérée par le serveur (cochée à la décision de tri) — toujours conservée ; les notes
+      // sont réservées à l'équipe de tri — conservées pour tout autre rôle.
+      const prec = typeof avant?.reponses === 'string' ? JSON.parse(avant.reponses) : (avant?.reponses || {});
+      const champsConserves = ROLES_SUIVI_TRI.includes(role)
+        ? ['techdoc_suggestion_transmise']
+        : ['techdoc_suggestion_transmise', 'techdoc_tri_notes'];
+      for (const champ of champsConserves) {
+        if (champ in reponses || champ in prec) reponses[champ] = prec[champ] ?? null;
+      }
+
+      // Commentaire de tri pour les ACQ (colonne tri_commentaire, pas dans le JSON) : modifiable
+      // par l'équipe de tri sur une suggestion triée ; obligatoire si l'avis est un refus.
+      let triCommentaire;
+      if ('tri_commentaire' in reponses) {
+        const brut = reponses.tri_commentaire;
+        delete reponses.tri_commentaire;
+        if (['accepte', 'refuse'].includes(avant?.tri_statut) && ROLES_SUIVI_TRI.includes(role)) {
+          triCommentaire = (typeof brut === 'string' ? brut.trim() : '') || null;
+          if (avant.tri_statut === 'refuse' && !triCommentaire) {
+            return res.status(400).json({ error: 'Un commentaire est obligatoire pour une suggestion refusée.' });
+          }
+          if (triCommentaire && triCommentaire.length > 2000) {
+            return res.status(400).json({ error: 'Le commentaire ne doit pas dépasser 2000 caractères.' });
+          }
         }
       }
 
       const updated = await ReponsesModel.updateReponses(id, reponses);
       if (!updated) return res.status(403).json({ error: 'Modification non autorisée ou demande introuvable.' });
+      if (triCommentaire !== undefined) await ReponsesModel.majTriCommentaire(id, triCommentaire);
       // Une demande déjà existante (brouillon) qu'on bascule à "Soumettre aux ACQ" lors d'une
       // modification doit elle aussi être matérialisée immédiatement, comme à la création.
       // Suggestion d'achat est en format plat (pas de reponses.baseData) — statut_bibliotheque
       // est alors directement sur reponses.
       const itemId = await _materialiserItem(id, reponses.baseData || reponses, 'patch-reponses');
 
-      // Suggestion publique acceptée par TechDoc, soumise aux ACQ à l'instant : les ACQ en sont
-      // avisés (BAL ACQ). Ils n'avaient reçu aucun courriel à l'envoi initial — la suggestion
-      // passait d'abord par le tri.
-      if (itemId && avant && avant.tri_statut === 'accepte' && !avant.item_id_cree) {
+      // Suggestion publique triée par TechDoc (acceptée ou refusée — simple avis), soumise aux
+      // ACQ à l'instant : les ACQ en sont avisés (BAL ACQ), avec l'avis de tri. Ils n'avaient reçu
+      // aucun courriel à l'envoi initial — la suggestion passait d'abord par le tri.
+      if (itemId && avant && ['accepte', 'refuse'].includes(avant.tri_statut) && !avant.item_id_cree) {
         await notifierEvenement('suggestion-soumise-acq', id, {
           id:              Number(id),
           item_id:         itemId,
@@ -535,6 +523,8 @@ const ReponsesController = {
           usager_courriel: avant.usager_courriel,
           usager_statut:   avant.usager_statut,
           tri_par_nom:     avant.tri_par_nom,
+          tri_statut:      avant.tri_statut,
+          tri_commentaire: avant.tri_commentaire,
           reponses,
         });
       } else if (itemId && avant && !avant.tri_statut && !avant.item_id_cree) {

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const PiecesJointesController = require('../controllers/pieces-jointes');
-const { requireAuth, requireRole, requirePersonnel, requireAdmin } = require('../middleware/jwt.middleware');
+const { requirePersonnel, requireAdmin } = require('../middleware/jwt.middleware');
 
 console.log('🛣️ Initialisation des routes items...');
 
@@ -56,10 +56,6 @@ router.get('/fiche/:id', requirePersonnel, itemsController.consulterItems);
 // UPDATE - Modifier un item
 // Personnel : la décision ACQ et le choix de notice TDM (statut-decision) enregistrent ici.
 router.put('/save/:id', requirePersonnel, itemsController.putItems);
-
-// TechDoc Tri — « Suggestion d'achat transmise en bibliothèque » (étape de fin, Admin/SuperAdmin)
-router.put('/:id/techdoc-transmise', requireAuth, requireRole('Admin', 'SuperAdmin'),
-  (req, res) => itemsController.majTechdocTransmise(req, res));
 
 // DELETE - Supprimer un item
 router.delete('/delete/:id', requireAdmin, itemsController.deleteItems);

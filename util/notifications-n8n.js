@@ -2,8 +2,9 @@
 // `evenement` indique de quoi il s'agit — voir le nœud « 🔀 Aiguillage » du workflow n8n).
 //
 // Événements :
-//  - 'suggestion-soumise-acq' : une suggestion publique acceptée par l'équipe TechDoc vient
-//                               d'être soumise aux ACQ → courriel à la BAL ACQ.
+//  - 'suggestion-soumise-acq' : une suggestion publique triée par l'équipe TechDoc vient
+//                               d'être soumise aux ACQ → courriel à la BAL ACQ. tri_statut
+//                               ('accepte' | 'refuse') et tri_commentaire : avis de l'équipe.
 //  - 'demande-soumise-acq'    : un brouillon interne vient d'être soumis aux ACQ → courriel à
 //                               la BAL ACQ + accusé de réception à la personne qui l'a saisi.
 //  - 'notice-tdm'             : une demande traitée par les ACQ requiert une création de
