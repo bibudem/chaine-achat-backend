@@ -25,7 +25,7 @@ function requireRole(...rolesAutorises) {
 
 // Personnel des bibliothèques (tout sauf la communauté UdeM, rôle Usager) — minimum exigé
 // pour toutes les routes de l'application, sauf la connexion et la suggestion publique.
-const ROLES_PERSONNEL = ['Admin', 'SuperAdmin', 'TDM', 'Employe', 'TechDoc'];
+const ROLES_PERSONNEL = ['Admin', 'SuperAdmin', 'TDM', 'Employe', 'TechDocTri'];
 const requirePersonnel = [requireAuth, requireRole(...ROLES_PERSONNEL)];
 // Administration (même règle que AdminGuard / canEdit côté frontend).
 const requireAdmin = [requireAuth, requireRole('Admin', 'SuperAdmin')];

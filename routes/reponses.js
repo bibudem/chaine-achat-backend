@@ -5,7 +5,7 @@ const PiecesJointesController = require('../controllers/pieces-jointes');
 const { requireAuth, requireRole, requirePersonnel, requireAdmin } = require('../middleware/jwt.middleware');
 
 // Équipe de tri des suggestions publiques — Admin/SuperAdmin aussi, pour la supervision.
-const ROLES_TRI = ['TechDoc', 'Admin', 'SuperAdmin'];
+const ROLES_TRI = ['TechDocTri', 'Admin', 'SuperAdmin'];
 
 // ─────────────────────────────────────────────────────────────
 // SUGGESTION D'ACHAT

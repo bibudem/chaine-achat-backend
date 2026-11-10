@@ -47,7 +47,7 @@ if (process.env.NODE_ENV !== 'production') {
     admin:  { sub: 'dev-admin-001',  email: 'admin@udem.dev',  nom: 'Admin',       prenom: 'Système', groupe: 'Administrateur', role: 'Admin' },
     acq:    { sub: 'dev-acq-001',    email: 'acq@udem.dev',    nom: 'TDM',         prenom: 'Agent',   groupe: 'TDM',          role: 'TDM' },
     employe: { sub: 'dev-employe-001', email: 'employe@udem.dev', nom: 'Bibliothèques', prenom: 'Test', groupe: 'Employé',   role: 'Employe' },
-    techdoc: { sub: 'dev-techdoc-001', email: 'techdoc@udem.dev', nom: 'TechDoc', prenom: 'Test', groupe: 'TechDoc', role: 'TechDoc' },
+    techdoc: { sub: 'dev-techdoc-001', email: 'techdoc@udem.dev', nom: 'TechDocTri', prenom: 'Test', groupe: 'TechDocTri', role: 'TechDocTri' },
     usager: { sub: 'dev-usager-001', email: 'usager@udem.dev', nom: 'UdeM',        prenom: 'Test',    groupe: 'Usager',       role: 'Usager' },
   };
 

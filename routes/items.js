@@ -59,7 +59,7 @@ router.put('/save/:id', requirePersonnel, itemsController.putItems);
 
 // TechDoc Tri — « Suggestion d'achat transmise en bibliothèque » (page de décision) :
 // cochée automatiquement à la décision de tri, modifiable par l'équipe de tri et les Admin.
-router.put('/:id/techdoc-transmise', requireAuth, requireRole('TechDoc', 'Admin', 'SuperAdmin'),
+router.put('/:id/techdoc-transmise', requireAuth, requireRole('TechDocTri', 'Admin', 'SuperAdmin'),
   (req, res) => itemsController.majTechdocTransmise(req, res));
 
 // DELETE - Supprimer un item

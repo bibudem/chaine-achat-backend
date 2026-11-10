@@ -7,7 +7,7 @@ router.get('/statistiques', requirePersonnel, rapportsController.getStatistiques
 router.get('/detaille',     requirePersonnel, rapportsController.getRapportDetaille);
 // Personnel seulement (pas la communauté UdeM) — mêmes rôles que StaffGuard côté Angular.
 router.get('/suivis-bibliotheques', requireAuth,
-  requireRole('Admin', 'SuperAdmin', 'TDM', 'Employe', 'TechDoc'),
+  requireRole('Admin', 'SuperAdmin', 'TDM', 'Employe', 'TechDocTri'),
   rapportsController.getSuivisBibliotheques);
 
 module.exports = router;

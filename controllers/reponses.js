@@ -8,13 +8,13 @@ const { posterN8n, notifierEvenement } = require('../util/notifications-n8n');
 const STATUT_SUGGESTION_RECUE = 'Suggestion d’achat reçue';
 
 // Compléter une suggestion publique et la soumettre aux ACQ : équipe de tri + Admin.
-const ROLES_COMPLETER_SUGGESTION = ['TechDoc', 'Admin', 'SuperAdmin'];
+const ROLES_COMPLETER_SUGGESTION = ['TechDocTri', 'Admin', 'SuperAdmin'];
 // « Suggestion d'achat transmise en bibliothèque » : cochée automatiquement à la décision de
 // tri, puis modifiable par l'équipe de tri et les Admin (voir aussi routes items/reponses).
-const ROLES_TRANSMISE = ['TechDoc', 'Admin', 'SuperAdmin'];
+const ROLES_TRANSMISE = ['TechDocTri', 'Admin', 'SuperAdmin'];
 // Champs « TechDoc Tri » (transmise en bibliothèque, notes) : équipe de tri seulement (le
 // SuperAdmin hérite de tous les accès).
-const ROLES_SUIVI_TRI = ['TechDoc', 'SuperAdmin'];
+const ROLES_SUIVI_TRI = ['TechDocTri', 'SuperAdmin'];
 
 const APP_URL = process.env.APP_URL || 'http://localhost:4200';
 
@@ -165,7 +165,7 @@ const ReponsesController = {
       // n8n /suggestion-publique (attendu : voir posterN8n) : accusé de réception au demandeur +
       // notification à l'équipe TechDoc. Pas le webhook /suggestion, qui écrit aux ACQ — ils
       // ne sont concernés qu'une fois la suggestion acceptée puis soumise.
-      const techdocCourriels = await UtilisateursModel.courrielsParRole('TechDoc')
+      const techdocCourriels = await UtilisateursModel.courrielsParRole('TechDocTri')
         .catch(err => { console.error('[suggestion-publique] courriels TechDoc:', err.message); return []; });
       await posterN8n(N8N_SUGGESTION_PUBLIQUE_URL, 'suggestion-publique', row.id, {
         id:               row.id,
