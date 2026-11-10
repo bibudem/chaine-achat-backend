@@ -177,7 +177,7 @@ const ReponsesModel = {
   // membres de l'équipe décident en même temps, seul le premier l'emporte — le second reçoit
   // la décision déjà prise (voir le contrôleur, qui répond alors 409).
   // « Suggestion d'achat transmise en bibliothèque » : cochée automatiquement dès qu'une
-  // décision (Oui ou Non) est rendue — plus de saisie manuelle.
+  // décision (Oui ou Non) est rendue — modifiable ensuite (équipe de tri, Admin).
   async decisionTri({ id, decision, commentaire, par, parNom, techdocTriNotes, majSuiviTri = true }) {
     const { rows } = await pool.query(
       `UPDATE tbl_reponses
@@ -548,6 +548,17 @@ const ReponsesModel = {
          LEFT JOIN tbl_items i ON i.item_id = r.item_id_cree
         WHERE r.id = $1`,
       [id]
+    );
+    return rows[0] || null;
+  },
+
+  async majTechdocTransmise(id, transmise) {
+    const { rows } = await pool.query(
+      `UPDATE tbl_reponses
+          SET reponses = reponses::jsonb || jsonb_build_object('techdoc_suggestion_transmise', $2::boolean)
+        WHERE id = $1 AND type_formulaire = 'Suggestion d''achat - Usager'
+        RETURNING id, (reponses::jsonb ->> 'techdoc_suggestion_transmise')::boolean AS techdoc_suggestion_transmise`,
+      [id, !!transmise]
     );
     return rows[0] || null;
   },

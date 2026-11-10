@@ -19,6 +19,8 @@ router.post('/suggestion', requirePersonnel,          ReponsesController.createS
 router.post('/suggestion-publique', requireAuth, ReponsesController.createSuggestionPublique);
 router.get('/tri',                  requireAuth, requireRole(...ROLES_TRI), ReponsesController.listTri);
 router.put('/:id/tri',              requireAuth, requireRole(...ROLES_TRI), ReponsesController.decisionTri);
+// « Transmise en bibliothèque » (page de décision) tant que la suggestion n'est pas un item.
+router.put('/:id/techdoc-transmise', requireAuth, requireRole(...ROLES_TRI), ReponsesController.majTechdocTransmise);
 
 // ─────────────────────────────────────────────────────────────
 // NOUVEL ACHAT UNIQUE

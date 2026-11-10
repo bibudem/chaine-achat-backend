@@ -9,6 +9,9 @@ const STATUT_SUGGESTION_RECUE = 'Suggestion d’achat reçue';
 
 // Compléter une suggestion publique et la soumettre aux ACQ : équipe de tri + Admin.
 const ROLES_COMPLETER_SUGGESTION = ['TechDoc', 'Admin', 'SuperAdmin'];
+// « Suggestion d'achat transmise en bibliothèque » : cochée automatiquement à la décision de
+// tri, puis modifiable par l'équipe de tri et les Admin (voir aussi routes items/reponses).
+const ROLES_TRANSMISE = ['TechDoc', 'Admin', 'SuperAdmin'];
 // Champs « TechDoc Tri » (transmise en bibliothèque, notes) : équipe de tri seulement (le
 // SuperAdmin hérite de tous les accès).
 const ROLES_SUIVI_TRI = ['TechDoc', 'SuperAdmin'];
@@ -264,6 +267,24 @@ const ReponsesController = {
     }
   },
 
+  // PUT /reponses/:id/techdoc-transmise — « transmise en bibliothèque » depuis la page de
+  // décision, tant que la suggestion n'est pas un item (sinon PUT /items/:id/techdoc-transmise).
+  async majTechdocTransmise(req, res) {
+    const id        = Number(req.params.id);
+    const transmise = req.body?.techdoc_suggestion_transmise;
+    if (!Number.isInteger(id) || typeof transmise !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'Paramètres invalides.' });
+    }
+    try {
+      const updated = await ReponsesModel.majTechdocTransmise(id, transmise);
+      if (!updated) return res.status(404).json({ success: false, error: 'Suggestion introuvable.' });
+      return res.json({ success: true, data: updated });
+    } catch (err) {
+      console.error('[techdoc] majTechdocTransmise:', err);
+      return res.status(500).json({ success: false, error: "Erreur lors de l'enregistrement." });
+    }
+  },
+
   // ═══════════════════════════════════════════════════════════
   // NOUVEL ACHAT UNIQUE
   // POST /reponses/nouvel-achat
@@ -474,13 +495,15 @@ const ReponsesController = {
       if (avant?.tri_statut && !ROLES_COMPLETER_SUGGESTION.includes(role)) {
         return res.status(403).json({ error: 'Seules l\'équipe de tri et les Admin peuvent modifier une suggestion publique.' });
       }
-      // Champs « TechDoc Tri » (Suggestion d'achat, format plat) : « transmise en bibliothèque »
-      // est gérée par le serveur (cochée à la décision de tri) — toujours conservée ; les notes
-      // sont réservées à l'équipe de tri — conservées pour tout autre rôle.
+      // Champs « TechDoc Tri » (Suggestion d'achat, format plat) — valeurs existantes conservées
+      // pour les rôles qui n'y ont pas droit : « transmise en bibliothèque » (cochée
+      // automatiquement à la décision de tri) est modifiable par l'équipe de tri et les Admin ;
+      // les notes, par l'équipe de tri seulement.
       const prec = typeof avant?.reponses === 'string' ? JSON.parse(avant.reponses) : (avant?.reponses || {});
-      const champsConserves = ROLES_SUIVI_TRI.includes(role)
-        ? ['techdoc_suggestion_transmise']
-        : ['techdoc_suggestion_transmise', 'techdoc_tri_notes'];
+      const champsConserves = [
+        ...(ROLES_TRANSMISE.includes(role) ? [] : ['techdoc_suggestion_transmise']),
+        ...(ROLES_SUIVI_TRI.includes(role) ? [] : ['techdoc_tri_notes']),
+      ];
       for (const champ of champsConserves) {
         if (champ in reponses || champ in prec) reponses[champ] = prec[champ] ?? null;
       }
