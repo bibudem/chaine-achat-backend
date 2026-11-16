@@ -191,8 +191,8 @@ async function rapportDetaille(filters = {}, limit = 100, offset = 0) {
 
       -- Partagé : date_debut_abonnement (CCOL + Nouvel abonnement)
       COALESCE(mc.date_debut_abonnement, na.date_debut_abonnement)         AS date_debut_abonnement,
-      -- Partagé : usager_aviser_activation (CCOL + Nouvel achat unique)
-      COALESCE(mc.usager_aviser_activation, nau.usager_aviser_activation)  AS usager_aviser_activation,
+      -- Partagé : usager_aviser_activation (CCOL + Nouvel abonnement + Nouvel achat unique)
+      COALESCE(mc.usager_aviser_activation, na.usager_aviser_activation, nau.usager_aviser_activation) AS usager_aviser_activation,
       -- Partagé : usager_aviser_reservation (Nouvel abonnement + Nouvel achat unique)
       COALESCE(na.usager_aviser_reservation, nau.usager_aviser_reservation) AS usager_aviser_reservation,
       -- Partagé : type_monographie (Nouvel abonnement + Nouvel achat unique + Requête ACQ)

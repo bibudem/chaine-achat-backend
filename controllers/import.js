@@ -680,12 +680,13 @@ const IMPORT_CONFIGS = {
     templateHeaders: [
       'priorite_demande', ...COMMON_HEADERS, ...FONDS_PARTAGES_HEADERS, 'projet_special',
       'date_debut_abonnement', 'type_monographie',
-      'usager_aviser_reservation'
+      'usager_aviser_reservation', 'usager_aviser_activation'
     ],
     buildSpecificData: (row) => ({
       date_debut_abonnement:     row['date_debut_abonnement']     || null,
       type_monographie:          row['type_monographie']          || null,
       usager_aviser_reservation: row['usager_aviser_reservation'] || null,
+      usager_aviser_activation:  row['usager_aviser_activation']  || null,
     })
   },
 
