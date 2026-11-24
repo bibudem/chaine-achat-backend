@@ -53,13 +53,11 @@ const Logs = {
           (SELECT COUNT(*) FROM tbl_items
             WHERE date_creation >= CURRENT_DATE - INTERVAL '7 days')                  AS items_last_7_days,
           -- Carte "Demandes traitées" (accueil admin) : toutes années, comme
-          -- items_last_7_days ci-dessus — un item réellement traité par les ACQ (suivi_acq/
-          -- statut_acq au-delà des valeurs par défaut du formulaire de décision, voir
-          -- estAcqEnAttenteDefaut côté frontend). Complément de "Demandes en attente".
+          -- items_last_7_days ci-dessus — demandes dont le statut ACQ est « Complétée ».
+          -- Même règle que la liste ouverte au clic sur la carte (Rechercher, filtre Statut
+          -- ACQ = Complétée, voir controllers/items.js) : le chiffre et la liste concordent.
           (SELECT COUNT(*)::int FROM tbl_items
-            WHERE statut_bibliotheque = 'Soumettre aux ACQ'
-              AND NOT (suivi_acq  IS NULL OR suivi_acq  = '' OR suivi_acq  = 'En attente de traitement')
-              AND NOT (statut_acq IS NULL OR statut_acq = '' OR statut_acq = 'En attente'))          AS total_traitees,
+            WHERE statut_bibliotheque = 'Complétée' OR statut_acq = 'Complétée')                   AS total_traitees,
           -- Carte "Demandes urgentes" : priorité Urgent ET encore en attente ACQ (mêmes
           -- valeurs par défaut/vides que "Demandes en attente" — voir ReponsesModel.getPending)
           -- — un urgent déjà traité n'a plus rien d'urgent à l'écran, pas utile à afficher ici.

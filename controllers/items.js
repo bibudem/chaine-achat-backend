@@ -399,8 +399,7 @@ const itemsController = {
       // Filtre "Voir les items importés" depuis le résultat/registre d'un import en lot
       // (voir controllers/import.js, colonne tbl_items.import_log_id).
       const importLogIdRaw = (req.query.import_log_id || '').trim();
-      const importLogId    = /^\d+$/.test(importLogIdRaw) ? parseInt(importLogIdRaw, 10) : null;
-      // Profil TDM (front-end) : ne restituer que les items routés vers le TDM.
+      const importLogId    = /^\d+$/.test(importLogIdRaw) ? parseInt(importLogIdRaw, 10) : null;      // Profil TDM (front-end) : ne restituer que les items routés vers le TDM.
       const creationNoticeDtdm = req.query.creation_notice_dtdm;
       // Année de date_creation (ex. depuis le sélecteur du tableau de bord admin — voir
       // models/home.js) : "all"/absent = pas de filtre. Paramétré (pas interpolé) car ici
