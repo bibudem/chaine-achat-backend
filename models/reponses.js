@@ -13,6 +13,47 @@ function cleanEmptyFields(obj) {
   );
 }
 
+function videsEnNull(obj) {
+  return Object.fromEntries(
+    Object.entries(obj)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => [k, v === '' ? null : (typeof v === 'string' ? v.trim() : v)])
+  );
+}
+
+/** Sépare le JSON d'une réponse en données de tbl_items (baseData) et de la table propre au
+ *  type de formulaire (specificData). Format plat pour l'ancienne Suggestion d'achat. */
+function separerDonnees(reponse) {
+  const raw  = reponse.reponses;
+  const data = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+  if (data.baseData) {
+    return { baseData: data.baseData, specificData: data.specificData || {}, plat: false };
+  }
+  const specificData = {
+    usager_statut:   reponse.usager_statut,
+    usager_courriel: reponse.usager_courriel,
+  };
+  const baseData = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (SUGGESTION_SPEC_KEYS.includes(k)) specificData[k] = v;
+    else baseData[k] = v;
+  }
+  return { baseData, specificData, plat: true };
+}
+
+// Champs saisis par les ACQ, le TDM ou l'équipe de tri, ou fixés à la création : jamais
+// écrasés par le formulaire du demandeur (voir synchroniserItemDepuisReponse).
+const CHAMPS_ITEM_PROTEGES = [
+  'item_id', 'formulaire_type', 'demandeur', 'date_creation', 'date_modification',
+  'import_log_id', 'statut_acq', 'suivi_acq', 'note_acq', 'note_dtdm',
+  'creation_notice_dtdm', 'catalogue',
+];
+const CHAMPS_SPECIFIQUES_PROTEGES = [
+  'acq_raison_annulation', 'acq_isbn', 'acq_numerisation_recommandee',
+  'acq_date_demande_editeur', 'acq_date_livraison_estimee',
+  'techdoc_suggestion_transmise', 'techdoc_tri_notes',
+];
+
 const TYPE_TABLE_MAP = {
   'Modification et CCOL':        'tbl_modification_ccol',
   'Nouvel abonnement':           'tbl_nouvel_abonnement',
@@ -22,13 +63,14 @@ const TYPE_TABLE_MAP = {
   "Suggestion d'achat - Usager": 'tbl_suggestion_achat',
 };
 
-async function insertSpecificTable(client, itemId, formulaireType, data) {
+// garderVides : un champ vidé devient NULL (mise à jour d'un item existant) au lieu d'être ignoré.
+async function insertSpecificTable(client, itemId, formulaireType, data, { garderVides = false, exclure = [] } = {}) {
   const tableName = TYPE_TABLE_MAP[formulaireType];
   if (!tableName) return;
-  const cleanedRaw = cleanEmptyFields(data);
+  const cleanedRaw = garderVides ? videsEnNull(data) : cleanEmptyFields(data);
   // Sécurité : ne garder que des clés qui sont de vraies colonnes de `tableName` — `data`
   // vient du JSON de la demande stockée par l'usager, voir util/db-columns.js.
-  const clean = await filterToTableColumns(tableName, cleanedRaw, ['item_id']);
+  const clean = await filterToTableColumns(tableName, cleanedRaw, ['item_id', ...exclure]);
   if (!Object.keys(clean).length) return;
   const cols = ['item_id', ...Object.keys(clean)];
   const vals = [itemId, ...Object.values(clean)];
@@ -306,26 +348,7 @@ const ReponsesModel = {
     if (!reponse) throw new Error(`Réponse #${reponseId} introuvable`);
     if (reponse.item_id_cree) return reponse.item_id_cree;
 
-    const raw  = reponse.reponses;
-    const data = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
-
-    let baseData, specificData;
-    if (data.baseData) {
-      // Format structuré : tous les types sauf l'ancienne Suggestion
-      baseData     = data.baseData;
-      specificData = data.specificData || {};
-    } else {
-      // Format plat : Suggestion d'achat - Usager (ancien formulaire)
-      specificData = {
-        usager_statut:   reponse.usager_statut,
-        usager_courriel: reponse.usager_courriel,
-      };
-      baseData = {};
-      for (const [k, v] of Object.entries(data)) {
-        if (SUGGESTION_SPEC_KEYS.includes(k)) specificData[k] = v;
-        else baseData[k] = v;
-      }
-    }
+    const { baseData, specificData } = separerDonnees(reponse);
 
     const cleanBase = cleanEmptyFields({
       formulaire_type: reponse.type_formulaire,
@@ -413,6 +436,85 @@ const ReponsesModel = {
     } finally {
       client.release();
     }
+  },
+
+  // ── Demande renvoyée par les ACQ au demandeur ──────────────────────────────
+  // Les ACQ remettent le statut bibliothèque à « Saisie en cours » : le demandeur peut de
+  // nouveau modifier sa demande. L'item existant est mis à jour avec le contenu du formulaire
+  // (sauf les champs protégés) ; un champ vidé est vidé. Renvoie l'item_id, ou null sans item.
+  async synchroniserItemDepuisReponse(reponseId) {
+    const reponse = await this.findById(reponseId);
+    if (!reponse?.item_id_cree || !reponse.item_existe) return null;
+    const itemId = reponse.item_id_cree;
+
+    const { baseData, specificData } = separerDonnees(reponse);
+    const base = { ...baseData };
+    for (const k of ['usager_nom', 'usager_statut', 'usager_courriel', 'send_notification']) delete base[k];
+    if ('note_interne_bib' in base) {
+      if (!base.bibliotheque_note_interne) base.bibliotheque_note_interne = base.note_interne_bib;
+      delete base.note_interne_bib;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const safeBase = await filterToTableColumns('tbl_items', videsEnNull(base), CHAMPS_ITEM_PROTEGES);
+      const cols = Object.keys(safeBase);
+      if (cols.length) {
+        const set = cols.map((c, i) => `${c} = $${i + 2}`).join(', ');
+        await client.query(
+          `UPDATE tbl_items SET ${set}, date_modification = CURRENT_TIMESTAMP WHERE item_id = $1`,
+          [itemId, ...Object.values(safeBase)]
+        );
+      }
+      // Soumise de nouveau : statut et suivi ACQ « en attente » s'ils sont vides.
+      if (safeBase.statut_bibliotheque === 'Soumettre aux ACQ') {
+        await client.query(
+          `UPDATE tbl_items
+              SET statut_acq = COALESCE(NULLIF(statut_acq, ''), 'En attente'),
+                  suivi_acq  = COALESCE(NULLIF(suivi_acq,  ''), 'En attente de traitement')
+            WHERE item_id = $1`,
+          [itemId]
+        );
+      }
+      if (Array.isArray(baseData.fonds_repartition)) {
+        await ItemsFondsModel.remplacerRepartition(client, itemId, baseData.fonds_repartition);
+      }
+      await insertSpecificTable(client, itemId, reponse.type_formulaire, specificData,
+        { garderVides: true, exclure: CHAMPS_SPECIFIQUES_PROTEGES });
+      await client.query('COMMIT');
+      return itemId;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /** Valeurs actuelles d'un item, pour préremplir le formulaire du demandeur :
+   *  { base, specifique, repartition } ou null. repartition est vide sans fonds partagés. */
+  async valeursItem(itemId, typeFormulaire) {
+    const { rows } = await pool.query('SELECT * FROM tbl_items WHERE item_id = $1', [itemId]);
+    if (!rows[0]) return null;
+    let specifique = {};
+    const table = TYPE_TABLE_MAP[typeFormulaire];
+    if (table) {
+      const r = await pool.query(`SELECT * FROM ${table} WHERE item_id = $1`, [itemId]);
+      specifique = r.rows[0] || {};
+    }
+    const nombre = v => (v === null || v === undefined ? null : Number(v));
+    const lignes = await ItemsFondsModel.getRepartition(itemId);
+    const repartition = lignes.length > 1
+      ? lignes.map(l => ({
+          devise_originale:      l.devise_originale,
+          prix_devise_originale: nombre(l.prix_devise_originale),
+          prix_cad:              nombre(l.prix_cad),
+          fonds_budgetaire:      l.fonds_budgetaire,
+          pourcentage:           nombre(l.pourcentage),
+        }))
+      : [];
+    return { base: rows[0], specifique, repartition };
   },
 
   // ── Items en attente de statut bibliothèque ───────────────────────────────
@@ -593,10 +695,10 @@ const ReponsesModel = {
         WHERE id = $1
           AND (statut_approbation IS NULL OR statut_approbation NOT IN ('approuve', 'refuse'))
           AND tri_statut IS DISTINCT FROM 'refuse'
+          -- Pas de suppression si un item existe (demande renvoyée par les ACQ).
           AND NOT EXISTS (
             SELECT 1 FROM tbl_items
              WHERE tbl_items.item_id = tbl_reponses.item_id_cree
-               AND tbl_items.statut_bibliotheque = 'Soumettre aux ACQ'
           )`,
       [id]
     );

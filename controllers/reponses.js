@@ -53,6 +53,53 @@ async function _materialiserItem(reponseId, baseData, logKey) {
   }
 }
 
+/** Date SQL → AAAA-MM-JJ (composantes locales, comme les renvoie le pilote pg). */
+function _dateIso(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Valeur de l'item convertie au type de la valeur du formulaire ; undefined = garder. */
+function _valeurItemPourFormulaire(actuelle, v) {
+  if (v instanceof Date) v = _dateIso(v);
+  if (v === null || v === undefined) return typeof actuelle === 'string' ? '' : null;
+  if (actuelle === null || actuelle === undefined || actuelle === '') return v;
+  if (typeof actuelle === 'number' && typeof v === 'string') return v.trim() !== '' && !isNaN(Number(v)) ? Number(v) : undefined;
+  if (typeof actuelle === typeof v) return v;
+  return undefined;
+}
+
+/** Demande renvoyée par les ACQ (item non soumis) : le JSON de la réponse date de la
+ *  soumission. On le complète avec les valeurs actuelles de l'item pour que le demandeur
+ *  reparte de l'état réel. Seule la réponse envoyée au client est modifiée. */
+async function _prefillDepuisItem(row) {
+  if (!row?.item_existe || row.item_statut_bibliotheque === 'Soumettre aux ACQ') return;
+  try {
+    const valeurs = await ReponsesModel.valeursItem(row.item_id_cree, row.type_formulaire);
+    if (!valeurs) return;
+    const reporter = (cible, sources) => {
+      for (const k of Object.keys(cible)) {
+        const src = sources.find(s => k in s);
+        if (!src) continue;
+        const v = _valeurItemPourFormulaire(cible[k], src[k]);
+        if (v !== undefined) cible[k] = v;
+      }
+    };
+    const r = row.reponses || {};
+    if (r.baseData) {
+      reporter(r.baseData, [valeurs.base]);
+      if (r.specificData) reporter(r.specificData, [valeurs.specifique]);
+      r.baseData.statut_bibliotheque = row.item_statut_bibliotheque;
+      r.baseData.fonds_repartition = valeurs.repartition;
+    } else {
+      reporter(r, [valeurs.specifique, valeurs.base]);
+      r.statut_bibliotheque = row.item_statut_bibliotheque;
+    }
+  } catch (err) {
+    console.error(`Préremplissage depuis l'item #${row.item_id_cree} échoué :`, err.message);
+  }
+}
+
 async function _creerFormulaire(req, res, typeFormulaire, n8nUrl, logKey) {
   const { usager_nom, usager_courriel, usager_statut, reponses } = req.body;
   if (!reponses?.baseData) return res.status(400).json({ error: 'reponses.baseData est requis.' });
@@ -474,6 +521,7 @@ const ReponsesController = {
       if (typeof row.reponses === 'string') {
         try { row.reponses = JSON.parse(row.reponses); } catch (e) { row.reponses = {}; }
       }
+      await _prefillDepuisItem(row);
       res.json(row);
     } catch (err) {
       res.status(500).json({ error: 'Erreur lors de la récupération.' });
@@ -532,12 +580,26 @@ const ReponsesController = {
       // modification doit elle aussi être matérialisée immédiatement, comme à la création.
       // Suggestion d'achat est en format plat (pas de reponses.baseData) — statut_bibliotheque
       // est alors directement sur reponses.
-      const itemId = await _materialiserItem(id, reponses.baseData || reponses, 'patch-reponses');
+      let itemId = await _materialiserItem(id, reponses.baseData || reponses, 'patch-reponses');
+
+      // Demande renvoyée par les ACQ (item existant non soumis, sinon updateReponses aurait
+      // refusé) : l'item est mis à jour ; s'il est soumis de nouveau, les ACQ sont avisés.
+      let resoumise = false;
+      if (avant?.item_id_cree && avant.item_existe) {
+        try {
+          itemId = await ReponsesModel.synchroniserItemDepuisReponse(id);
+          resoumise = _estSoumise(reponses.baseData || reponses);
+          if (resoumise) console.log(`[patch-reponses] demande #${id} soumise de nouveau aux ACQ (item #${itemId})`);
+        } catch (err) {
+          console.error(`[patch-reponses] mise à jour de l'item échouée pour la réponse #${id}:`, err.message);
+          return res.status(500).json({ error: 'La demande a été enregistrée, mais l\'item n\'a pas pu être mis à jour. Veuillez réessayer.' });
+        }
+      }
 
       // Suggestion publique triée par TechDoc (acceptée ou refusée — simple avis), soumise aux
       // ACQ à l'instant : les ACQ en sont avisés (BAL ACQ), avec l'avis de tri. Ils n'avaient reçu
       // aucun courriel à l'envoi initial — la suggestion passait d'abord par le tri.
-      if (itemId && avant && ['accepte', 'refuse'].includes(avant.tri_statut) && !avant.item_id_cree) {
+      if (itemId && avant && ['accepte', 'refuse'].includes(avant.tri_statut) && (!avant.item_id_cree || resoumise)) {
         await notifierEvenement('suggestion-soumise-acq', id, {
           id:              Number(id),
           item_id:         itemId,
@@ -550,7 +612,7 @@ const ReponsesController = {
           tri_commentaire: avant.tri_commentaire,
           reponses,
         });
-      } else if (itemId && avant && !avant.tri_statut && !avant.item_id_cree) {
+      } else if (itemId && avant && !avant.tri_statut && (!avant.item_id_cree || resoumise)) {
         // Brouillon interne soumis aux ACQ à l'instant : mêmes courriels qu'une demande soumise
         // dès sa création (BAL ACQ + accusé de réception à la personne qui l'a saisie).
         await notifierEvenement('demande-soumise-acq', id, {
