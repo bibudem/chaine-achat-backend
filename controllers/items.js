@@ -390,6 +390,12 @@ const itemsController = {
       // Précision de la demande (« Type de demande ») — Modification et CCOL seulement,
       // stockée dans tbl_modification_ccol.
       const precision_demande = (req.query.precision_demande || '').trim();
+      // Type de document = tbl_items.categorie_document (Monographie, Périodique…).
+      const categorie_document = (req.query.categorie_document || '').trim();
+      // Type de monographie — stocké dans les tables propres à Nouvel abonnement, Nouvel
+      // achat unique, PEB Tipasa numérique et Requête ACQ Accessibilité (même regroupement
+      // que models/rapports.js).
+      const type_monographie = (req.query.type_monographie || '').trim();
       // Filtre "Voir les items importés" depuis le résultat/registre d'un import en lot
       // (voir controllers/import.js, colonne tbl_items.import_log_id).
       const importLogIdRaw = (req.query.import_log_id || '').trim();
@@ -456,6 +462,19 @@ const itemsController = {
         params.push(priorite_demande);
         conditions.push(`priorite_demande = $${params.length}`);
       }
+      if (categorie_document) {
+        params.push(categorie_document);
+        conditions.push(`categorie_document = $${params.length}`);
+      }
+      if (type_monographie) {
+        params.push(type_monographie);
+        const i = params.length;
+        conditions.push(`item_id IN (
+          SELECT item_id FROM tbl_nouvel_abonnement   WHERE type_monographie = $${i}
+          UNION SELECT item_id FROM tbl_nouvel_achat_unique WHERE type_monographie = $${i}
+          UNION SELECT item_id FROM tbl_peb_tipasa_numerique WHERE type_monographie = $${i}
+          UNION SELECT item_id FROM tbl_requete_acq         WHERE type_monographie = $${i})`);
+      }
       if (importLogId) {
         params.push(importLogId);
         conditions.push(`import_log_id = $${params.length}`);
@@ -501,7 +520,14 @@ const itemsController = {
       // precision_demande : colonne de tbl_modification_ccol, ajoutée pour la colonne et le tri
       // de la liste (sous-requête plutôt que jointure : les filtres plus haut restent non qualifiés).
       const dataQuery  = `SELECT *, (SELECT mc.precision_demande FROM tbl_modification_ccol mc
-                                      WHERE mc.item_id = tbl_items.item_id LIMIT 1) AS precision_demande
+                                      WHERE mc.item_id = tbl_items.item_id LIMIT 1) AS precision_demande,
+                                   -- Type de monographie (affiché sous le titre dans la liste)
+                                   COALESCE(
+                                     (SELECT na.type_monographie   FROM tbl_nouvel_abonnement   na   WHERE na.item_id   = tbl_items.item_id LIMIT 1),
+                                     (SELECT nau.type_monographie  FROM tbl_nouvel_achat_unique nau  WHERE nau.item_id  = tbl_items.item_id LIMIT 1),
+                                     (SELECT racq.type_monographie FROM tbl_requete_acq         racq WHERE racq.item_id = tbl_items.item_id LIMIT 1),
+                                     (SELECT ptn.type_monographie  FROM tbl_peb_tipasa_numerique ptn WHERE ptn.item_id  = tbl_items.item_id LIMIT 1)
+                                   ) AS type_monographie
                             FROM tbl_items ${where} ORDER BY ${orderClause} LIMIT $${filterParamLen + 1} OFFSET $${filterParamLen + 2}`;
       const countQuery = `SELECT COUNT(*) AS total FROM tbl_items ${where}`;
 
