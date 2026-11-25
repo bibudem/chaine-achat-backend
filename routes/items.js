@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const PiecesJointesController = require('../controllers/pieces-jointes');
-const { requireAuth, requireRole, requirePersonnel, requireAdmin } = require('../middleware/jwt.middleware');
+const { requireAuth, requireRole, requirePersonnel, requireGestion } = require('../middleware/jwt.middleware');
 
 console.log('🛣️ Initialisation des routes items...');
 
@@ -48,7 +48,7 @@ requiredMethods.forEach(method => {
 // ==================== ROUTES CRUD ====================
 
 // CREATE - Ajouter un nouvel item
-router.post('/add', requireAdmin, itemsController.postItems);
+router.post('/add', requireGestion, itemsController.postItems);
 
 // READ - Consulter un item par ID
 router.get('/fiche/:id', requirePersonnel, itemsController.consulterItems);
@@ -63,7 +63,7 @@ router.put('/:id/techdoc-transmise', requireAuth, requireRole('TechDocTri', 'Adm
   (req, res) => itemsController.majTechdocTransmise(req, res));
 
 // DELETE - Supprimer un item
-router.delete('/delete/:id', requireAdmin, itemsController.deleteItems);
+router.delete('/delete/:id', requireGestion, itemsController.deleteItems);
 
 // ==================== ROUTES DE LISTING ====================
 

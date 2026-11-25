@@ -198,6 +198,11 @@ const itemsController = {
 
       // Filtrer les valeurs vides
       const cleanedBaseData = cleanEmptyFields(baseData);
+      // Champs TDM envoyés vides : effacés (sinon impossible de remettre le Suivi Catalogage
+      // à Vide ou de vider une note). Les autres champs vides restent ignorés.
+      for (const champ of ['note_dtdm', 'note_interne_dtdm', 'catalogue']) {
+        if (champ in baseData && !(champ in cleanedBaseData)) cleanedBaseData[champ] = null;
+      }
 
       // Sécurité : ne garder que des clés qui sont de vraies colonnes de tbl_items (voir
       // util/db-columns.js) — jamais item_id, qui est déjà exclu de baseData ci-dessus mais
@@ -459,6 +464,12 @@ const itemsController = {
       if (demandeur) {
         params.push(demandeur);
         conditions.push(`demandeur = $${params.length}`);
+      }
+      // Champs TDM : vide (NULL ou blanc) ou rempli. Colonnes fixes, aucune saisie interpolée.
+      for (const col of ['note_dtdm', 'note_interne_dtdm', 'catalogue']) {
+        const v = req.query[col];
+        if (v === 'vide')   conditions.push(`NULLIF(TRIM(${col}), '') IS NULL`);
+        if (v === 'rempli') conditions.push(`NULLIF(TRIM(${col}), '') IS NOT NULL`);
       }
       if (formulaire_type) {
         params.push(formulaire_type);
