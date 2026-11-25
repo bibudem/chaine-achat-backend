@@ -382,7 +382,13 @@ const itemsController = {
       const search           = (req.query.search           || '').trim();
       const bibliotheque     = (req.query.bibliotheque     || '').trim();
       const statut           = (req.query.statut           || '').trim();
+      const statut_bibliotheque = (req.query.statut_bibliotheque || '').trim();
       const suivi_acq        = (req.query.suivi_acq        || '').trim();
+      // Demandeur exact (lien « Top demandeurs » du tableau de bord).
+      const demandeur        = (req.query.demandeur        || '').trim();
+      // Demande soumise aux ACQ : un statut/suivi ACQ vide vaut la valeur par défaut — même
+      // règle que les compteurs du tableau de bord (models/home.js, ReponsesModel.getPending).
+      const soumiseAcq       = statut_bibliotheque === 'Soumettre aux ACQ';
       const formulaire_type  = (req.query.formulaire_type  || '').trim();
       // Plusieurs fonds possibles, séparés par des virgules (filtre à choix multiples).
       const fondsListe       = String(req.query.fonds_budgetaire || '').split(',').map(f => f.trim()).filter(Boolean);
@@ -435,13 +441,24 @@ const itemsController = {
         params.push(bibliotheque);
         conditions.push(`bibliotheque = $${params.length}`);
       }
+      if (statut_bibliotheque) {
+        params.push(statut_bibliotheque);
+        conditions.push(`statut_bibliotheque = $${params.length}`);
+      }
       if (statut) {
         params.push(statut);
-        conditions.push(`(statut_bibliotheque = $${params.length} OR statut_acq = $${params.length})`);
+        const i = params.length;
+        const vide = soumiseAcq && statut === 'En attente' ? ` OR statut_acq IS NULL OR statut_acq = ''` : '';
+        conditions.push(`(statut_bibliotheque = $${i} OR statut_acq = $${i}${vide})`);
       }
       if (suivi_acq) {
         params.push(suivi_acq);
-        conditions.push(`suivi_acq = $${params.length}`);
+        const vide = soumiseAcq && suivi_acq === 'En attente de traitement' ? ` OR suivi_acq IS NULL OR suivi_acq = ''` : '';
+        conditions.push(`(suivi_acq = $${params.length}${vide})`);
+      }
+      if (demandeur) {
+        params.push(demandeur);
+        conditions.push(`demandeur = $${params.length}`);
       }
       if (formulaire_type) {
         params.push(formulaire_type);

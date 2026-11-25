@@ -53,9 +53,9 @@ const Logs = {
           (SELECT COUNT(*) FROM tbl_items
             WHERE date_creation >= CURRENT_DATE - INTERVAL '7 days')                  AS items_last_7_days,
           -- Carte "Demandes traitées" (accueil admin) : toutes années, comme
-          -- items_last_7_days ci-dessus — demandes dont le statut ACQ est « Complétée ».
-          -- Même règle que la liste ouverte au clic sur la carte (Rechercher, filtre Statut
-          -- ACQ = Complétée, voir controllers/items.js) : le chiffre et la liste concordent.
+          -- items_last_7_days ci-dessus — demandes au statut « Complétée ».
+          -- Même règle que la liste ouverte au clic sur la carte (filtre Statut ACQ =
+          -- Complétée, paramètre statut de controllers/items.js).
           (SELECT COUNT(*)::int FROM tbl_items
             WHERE statut_bibliotheque = 'Complétée' OR statut_acq = 'Complétée')                   AS total_traitees,
           -- Carte "Demandes urgentes" : priorité Urgent ET encore en attente ACQ (mêmes
