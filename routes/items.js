@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const PiecesJointesController = require('../controllers/pieces-jointes');
-const { requireAuth, requireRole, requirePersonnel, requireGestion } = require('../middleware/jwt.middleware');
+const { requireAuth, requireRole, requirePersonnel, requireAdmin, requireGestion } = require('../middleware/jwt.middleware');
 
 console.log('🛣️ Initialisation des routes items...');
 
@@ -63,7 +63,7 @@ router.put('/:id/techdoc-transmise', requireAuth, requireRole('TechDocTri', 'Adm
   (req, res) => itemsController.majTechdocTransmise(req, res));
 
 // DELETE - Supprimer un item
-router.delete('/delete/:id', requireGestion, itemsController.deleteItems);
+router.delete('/delete/:id', requireAdmin, itemsController.deleteItems);
 
 // ==================== ROUTES DE LISTING ====================
 

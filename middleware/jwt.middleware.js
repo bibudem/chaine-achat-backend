@@ -27,10 +27,10 @@ function requireRole(...rolesAutorises) {
 // pour toutes les routes de l'application, sauf la connexion et la suggestion publique.
 const ROLES_PERSONNEL = ['Admin', 'SuperAdmin', 'TDM', 'Employe', 'TechDocTri'];
 const requirePersonnel = [requireAuth, requireRole(...ROLES_PERSONNEL)];
-// Administration : Processus/Import et Registres (même règle que AdminGuard côté frontend).
+// Administration : suppression des items, Processus/Import et Registres (AdminGuard, canEdit).
 const requireAdmin = [requireAuth, requireRole('Admin', 'SuperAdmin')];
-// Gestion (même règle que canEdit / isGestion côté frontend) : l'Admin et le TDM, qui a les
-// mêmes accès sauf Processus/Import et Registres (requireAdmin).
+// Gestion (même règle que isGestion côté frontend) : l'Admin et le TDM. Suppression des items,
+// Processus/Import et Registres restent requireAdmin.
 const requireGestion = [requireAuth, requireRole('Admin', 'SuperAdmin', 'TDM')];
 // Écriture dans le sous-menu Configuration (fonds, bibliothèques, taux de change, utilisateurs) :
 // SuperAdmin seulement — l'Admin y a accès en lecture seule.
