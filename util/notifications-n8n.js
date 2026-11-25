@@ -12,7 +12,9 @@
 //  - 'tdm-complete'           : l'équipe TDM a terminé le catalogage (« Suivi catalogage » =
 //                               Complété) → courriel à la BAL ACQ, qui peut finaliser la demande.
 const axios  = require('axios');
+const crypto = require('crypto');
 const config = require('../config/config');
+const CourrielsModel = require('../models/courriels');
 
 // Valeur par défaut de suivi_acq tant que les ACQ n'ont pas réellement traité la demande
 // (même valeur que ACQ_SUIVI_DEFAUT côté frontend, lib/DemandeStatut.ts).
@@ -24,19 +26,56 @@ const N8N_TIMEOUT_MS = 5000;
 /** Appel à un webhook n8n, à attendre (await) AVANT de renvoyer la réponse HTTP : sur AWS
  *  Lambda, l'environnement est gelé dès la réponse envoyée, et un appel non attendu ne part
  *  jamais (en local, le processus reste vivant, d'où l'écart local/production).
- *  Ne lève jamais d'erreur : un échec de n8n ne doit pas faire échouer l'action de l'usager. */
-async function posterN8n(url, logKey, refId, payload) {
+ *  Ne lève jamais d'erreur : un échec de n8n ne doit pas faire échouer l'action de l'usager.
+ *
+ *  Journal : une ligne tbl_courriels est créée avant l'appel ; son envoi_ref est transmis à n8n,
+ *  qui renvoie ensuite le statut de chaque courriel (POST /courriels/retour). `journal` complète
+ *  la ligne (destinataire, rôle, nœud, contenu, déclencheur) ; item et réponse sont repris du
+ *  payload à défaut. Retourne true si n8n a accepté l'appel. */
+async function posterN8n(url, logKey, refId, payload, journal = {}) {
+  const envoi_ref = crypto.randomUUID();
+  await journaliser(envoi_ref, logKey, payload, journal);
+
   if (!url) {
     console.warn(`⚠️  [${logKey}] URL n8n non configurée (N8N_BASE_URL ?) — notification ignorée (#${refId})`);
-    return;
+    await marquerEchec(envoi_ref, 'URL n8n non configurée');
+    return false;
   }
   try {
-    await axios.post(url, { ...payload, app_url: config.urls.frontend }, { timeout: N8N_TIMEOUT_MS });
+    await axios.post(url, { ...payload, envoi_ref, app_url: config.urls.frontend }, { timeout: N8N_TIMEOUT_MS });
     console.log(`✅ [${logKey}] n8n notifié — #${refId}`);
+    return true;
   } catch (err) {
     console.error(`❌ [${logKey}] n8n non joignable (${url}):`, err.message);
     if (err.response) console.error(`   Status: ${err.response.status}`);
+    await marquerEchec(envoi_ref, `n8n non joignable : ${err.message}`);
+    return false;
   }
+}
+
+// Le journal ne doit jamais bloquer l'envoi (ex. table pas encore créée).
+async function journaliser(envoi_ref, type_envoi, payload, journal) {
+  try {
+    await CourrielsModel.creer({
+      envoi_ref,
+      type_envoi,
+      item_id:    journal.item_id    ?? payload.item_id ?? null,
+      reponse_id: journal.reponse_id ?? payload.reponse_id ?? payload.id ?? null,
+      destinataire:      journal.destinataire      ?? null,
+      role_destinataire: journal.role_destinataire ?? null,
+      noeud:             journal.noeud             ?? null,
+      contenu:           journal.contenu           ?? null,
+      declenche_par:     journal.declenche_par     ?? null,
+      declenche_par_nom: journal.declenche_par_nom ?? null,
+    });
+  } catch (err) {
+    console.error(`⚠️  [courriels] journal non enregistré (${type_envoi}):`, err.message);
+  }
+}
+
+async function marquerEchec(envoi_ref, erreur) {
+  try { await CourrielsModel.marquerEchecEnvoi(envoi_ref, erreur); }
+  catch (err) { console.error('⚠️  [courriels] statut d\'échec non enregistré:', err.message); }
 }
 
 /** Événement vers le webhook /notifications (champ `evenement`). */

@@ -21,5 +21,6 @@ module.exports = {
     triDecisionUrl:      '/webhook/tri-decision',
     suggestionPubliqueUrl: '/webhook/suggestion-publique',
     notificationsUrl:    '/webhook/notifications',
+    statutDecisionUrl:   '/webhook/statut-decision',
   },
 };

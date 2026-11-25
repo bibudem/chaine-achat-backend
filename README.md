@@ -62,6 +62,8 @@ PORT=3000
 
 # N8N
 N8N_BASE_URL=http://host.docker.internal:5678
+# Retour du statut des courriels par n8n (même valeur que le credential « Header Auth » de n8n)
+COURRIEL_RETOUR_SECRET=une_longue_valeur_aleatoire
 ```
 
 Remplace :
@@ -72,6 +74,7 @@ Remplace :
 - `AZURE_CLIENT_SECRET` par le secret client de l'application Azure AD (authentification)
 - `JWT_SECRET` par une valeur secrète pour les tokens
 - `N8N_BASE_URL` par l'URL de ton instance n8n locale (webhooks de notification)
+- `COURRIEL_RETOUR_SECRET` par une valeur aléatoire, reprise dans le credential « Header Auth » (en-tête `X-Courriel-Secret`) du nœud n8n « 📬 Statut du courriel → application ». Vide : le statut des courriels reste « Transmis à n8n »
 
 ### 4. Configurer Azure AD et n8n (non sensible)
 
@@ -83,7 +86,7 @@ cp config/config.example.js config/config.dev.js
 
 Remplis `azure.tenantId` et `azure.clientId` avec les identifiants de l'application Azure AD (non secrets — le secret reste dans `.env`). Les chemins des webhooks n8n (`n8n.suggestionUrl`, etc.) et `urls.frontend` ont déjà des valeurs par défaut, à ajuster au besoin.
 
-En production, le même gabarit sert de base à `config/config.prod.js`, bundlé dans `function.zip` au déploiement (voir `pack.js`). Les secrets (`AZURE_CLIENT_SECRET`, `JWT_SECRET`, `N8N_BASE_URL`) restent injectés comme variables d'environnement sur AWS Lambda, jamais dans ce fichier.
+En production, le même gabarit sert de base à `config/config.prod.js`, bundlé dans `function.zip` au déploiement (voir `pack.js`). Les secrets (`AZURE_CLIENT_SECRET`, `JWT_SECRET`, `N8N_BASE_URL`, `COURRIEL_RETOUR_SECRET`) restent injectés comme variables d'environnement sur AWS Lambda, jamais dans ce fichier.
 
 ### 5. Créer la base de données
 

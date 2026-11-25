@@ -32,11 +32,15 @@ module.exports = {
       triDecisionUrl:      url(paths.triDecisionUrl),
       suggestionPubliqueUrl: url(paths.suggestionPubliqueUrl),
       notificationsUrl:    url(paths.notificationsUrl),
+      statutDecisionUrl:   url(paths.statutDecisionUrl),
     };
   })(),
   jwt: {
     secret: process.env.JWT_SECRET || 'dev-secret-changez-en-prod',
   },
+  // Secret partagé avec n8n (en-tête X-Courriel-Secret) pour le retour du statut des courriels
+  // (POST /courriels/retour). Vide → route refusée.
+  courrielRetourSecret: process.env.COURRIEL_RETOUR_SECRET || '',
   urls: {
     // Slash(s) final retiré : évite les doubles slashes dans les redirections (.../auth-callback)
     frontend: (envConfig.urls?.frontend || 'http://localhost:4200').replace(/\/+$/, ''),
