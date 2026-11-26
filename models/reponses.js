@@ -289,10 +289,10 @@ const ReponsesModel = {
 
   async findAll({ type = null, statut = null, suivi_acq = null, limit = 20, offset = 0 }) {
     const params     = [];
-    // Suggestions publiques pas encore triées par l'équipe TechDoc ne concernent pas (ou pas
-    // encore) les ACQ — voir findTri plus bas. Celles refusées au tri suivent le circuit comme
-    // les acceptées : le refus est un avis, affiché aux ACQ qui prennent la décision finale.
-    const conditions = [`(r.tri_statut IS NULL OR r.tri_statut IN ('accepte', 'refuse'))`];
+    // Toutes les réponses, y compris les suggestions publiques encore en attente de tri
+    // (tri_statut = 'a_trier') : l'Admin les voit dès leur envoi (badge « En attente de tri »),
+    // la décision ACQ ne devient possible qu'une fois la suggestion triée et soumise.
+    const conditions = [];
 
     if (type) {
       params.push(type);
