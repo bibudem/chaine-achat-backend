@@ -1,7 +1,7 @@
 const pool = require('../config/postgres.config');
 const PiecesJointesModel = require('./pieces-jointes');
 const ItemsFondsModel = require('./items-fonds');
-const { filterToTableColumns } = require('../util/db-columns');
+const { filterToTableColumns, getTableColumns } = require('../util/db-columns');
 
 // ── Helpers internes ──────────────────────────────────────────────────────────
 
@@ -309,9 +309,15 @@ const ReponsesModel = {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     params.push(limit, offset);
+    // Dernière modification (après la migration seulement) : affichée sous l'auteur.
+    const suivi = (await getTableColumns('tbl_reponses')).has('date_modification');
+    const colonnesSuivi = suivi
+      ? 'r.modifie_par_nom, r.modifie_par_courriel, r.date_modification,'
+      : 'NULL::text AS modifie_par_nom, NULL::text AS modifie_par_courriel, NULL::timestamp AS date_modification,';
 
     const { rows } = await pool.query(
       `SELECT r.id, r.type_formulaire, r.usager_nom, r.usager_courriel,
+              ${colonnesSuivi}
               r.usager_statut, r.reponses, r."dateA",
               r.statut_approbation, r.courriel_admin,
               r.date_traitement, r.commentaire_admin,
@@ -442,7 +448,7 @@ const ReponsesModel = {
   // Les ACQ remettent le statut bibliothèque à « Saisie en cours » : le demandeur peut de
   // nouveau modifier sa demande. L'item existant est mis à jour avec le contenu du formulaire
   // (sauf les champs protégés) ; un champ vidé est vidé. Renvoie l'item_id, ou null sans item.
-  async synchroniserItemDepuisReponse(reponseId) {
+  async synchroniserItemDepuisReponse(reponseId, modifiePar = null) {
     const reponse = await this.findById(reponseId);
     if (!reponse?.item_id_cree || !reponse.item_existe) return null;
     const itemId = reponse.item_id_cree;
@@ -450,6 +456,8 @@ const ReponsesModel = {
     const { baseData, specificData } = separerDonnees(reponse);
     const base = { ...baseData };
     for (const k of ['usager_nom', 'usager_statut', 'usager_courriel', 'send_notification']) delete base[k];
+    // Personne connectée (auteur ou collègue) : « Dernière modification — par » côté admin.
+    if (modifiePar) base.utilisateur_modification = modifiePar;
     if ('note_interne_bib' in base) {
       if (!base.bibliotheque_note_interne) base.bibliotheque_note_interne = base.note_interne_bib;
       delete base.note_interne_bib;
@@ -674,19 +682,31 @@ const ReponsesModel = {
     );
   },
 
-  async updateReponses(id, reponses) {
-    const { rowCount } = await pool.query(
+  /** Enregistre le contenu d'une demande non soumise ; `modifiePar` = { nom, courriel } de la
+   *  personne connectée (l'auteur ou un collègue). Retourne { date_modification }, ou null si
+   *  la demande est introuvable ou déjà soumise aux ACQ.
+   *  Colonnes de suivi (modifie_par_*, date_modification) utilisées seulement si elles existent. */
+  async updateReponses(id, reponses, modifiePar = null) {
+    const suivi  = (await getTableColumns('tbl_reponses')).has('date_modification');
+    const params = [id, JSON.stringify(reponses)];
+    let setSuivi = '';
+    if (suivi) {
+      params.push(modifiePar?.nom || null, modifiePar?.courriel || null);
+      setSuivi = ', modifie_par_nom = $3, modifie_par_courriel = $4, date_modification = CURRENT_TIMESTAMP';
+    }
+    const { rows } = await pool.query(
       `UPDATE tbl_reponses
-          SET reponses = $2
+          SET reponses = $2${setSuivi}
         WHERE id = $1
           AND NOT EXISTS (
             SELECT 1 FROM tbl_items
              WHERE tbl_items.item_id = tbl_reponses.item_id_cree
                AND tbl_items.statut_bibliotheque = 'Soumettre aux ACQ'
-          )`,
-      [id, JSON.stringify(reponses)]
+          )
+        RETURNING ${suivi ? 'date_modification' : 'NULL::timestamp AS date_modification'}`,
+      params
     );
-    return rowCount > 0;
+    return rows[0] || null;
   },
 
   async deleteById(id) {
@@ -706,6 +726,11 @@ const ReponsesModel = {
   },
 
   async findByEmail(email) {
+    // Dernière modification (demande complétée par un collègue) : après la migration seulement.
+    const suivi = (await getTableColumns('tbl_reponses')).has('date_modification');
+    const colonnesSuivi = suivi
+      ? 'r.modifie_par_nom, r.modifie_par_courriel, r.date_modification,'
+      : 'NULL::text AS modifie_par_nom, NULL::text AS modifie_par_courriel, NULL::timestamp AS date_modification,';
     const { rows } = await pool.query(
       `SELECT * FROM (
          SELECT DISTINCT ON (r.id)
@@ -752,6 +777,7 @@ const ReponsesModel = {
                 i.statut_acq,
                 i.note_acq,
                 i.note_commentaire,
+                ${colonnesSuivi}
                 -- Numéro affiché à l'usager = numéro de l'item (celui des demandes transmises).
                 r.item_id_cree AS item_id,
                 -- Précision de la demande (Modification et CCOL seulement).
@@ -773,13 +799,13 @@ const ReponsesModel = {
   // Volontairement plus restreint que findByEmail : aucune information personnelle sur
   // le demandeur (nom, courriel), aucun champ financier ni note interne — seulement de
   // quoi identifier la demande et sa progression.
-  async findAllPublic({ limit = 25, offset = 0, search = null, type_formulaire = null, bibliotheque = null, dateDebut = null, dateFin = null, statut = null } = {}) {
+  async findAllPublic({ limit = 25, offset = 0, search = null, type_formulaire = null, bibliotheque = null, dateDebut = null, dateFin = null, statut = null, collaboration = false } = {}) {
     const conditions = [];
     const params     = [];
 
     if (search) {
       params.push(`%${search}%`);
-      conditions.push(`titre_document ILIKE $${params.length}`);
+      conditions.push(`(titre_document ILIKE $${params.length} OR usager_nom ILIKE $${params.length})`);
     }
     if (type_formulaire) {
       params.push(type_formulaire);
@@ -798,14 +824,25 @@ const ReponsesModel = {
       conditions.push(`"dateA"::date <= $${params.length}`);
     }
     // Même catégorisation que demandeBadgeStatut() côté front (lib/DemandeStatut.ts) :
-    // 'attente' = pas encore soumise aux ACQ, 'soumise' = soumise, décision ACQ en attente,
-    // 'traitee' = soumise et déjà traitée par les ACQ (suivi_acq renseigné).
+    // 'attente' = pas encore soumise aux ACQ, 'soumise' = soumise, décision ACQ en attente
+    // (suivi vide ou encore sur les valeurs par défaut du formulaire de décision),
+    // 'traitee' = soumise et réellement traitée par les ACQ.
+    const acqEnAttente = `(suivi_acq IS NULL OR (suivi_acq = 'En attente de traitement'
+                           AND COALESCE(statut_acq, '') = 'En attente'))`;
     if (statut === 'attente') {
       conditions.push(`(statut_bibliotheque IS DISTINCT FROM 'Soumettre aux ACQ')`);
     } else if (statut === 'soumise') {
-      conditions.push(`(statut_bibliotheque = 'Soumettre aux ACQ' AND suivi_acq IS NULL)`);
+      conditions.push(`(statut_bibliotheque = 'Soumettre aux ACQ' AND ${acqEnAttente})`);
     } else if (statut === 'traitee') {
-      conditions.push(`(statut_bibliotheque = 'Soumettre aux ACQ' AND suivi_acq IS NOT NULL)`);
+      conditions.push(`(statut_bibliotheque = 'Soumettre aux ACQ' AND NOT ${acqEnAttente})`);
+    }
+
+    // « Demandes à compléter » (espace Dépôt) : seulement celles qu'un collègue
+    // peut compléter — non soumises aux ACQ, non refusées, hors suggestions d'achat.
+    if (collaboration) {
+      conditions.push(`(statut_bibliotheque IS DISTINCT FROM 'Soumettre aux ACQ')`);
+      conditions.push(`(statut_approbation IS DISTINCT FROM 'refuse')`);
+      conditions.push(`type_formulaire <> 'Suggestion d''achat - Usager'`);
     }
 
     // Suggestions publiques pas encore triées par l'équipe TechDoc : pas encore entrées dans
@@ -814,6 +851,11 @@ const ReponsesModel = {
     conditions.push(`(tri_statut IS NULL OR tri_statut IN ('accepte', 'refuse'))`);
 
     const where = `WHERE ${conditions.join(' AND ')}`;
+    // Dernière modification (collaboration) : colonnes présentes seulement après la migration.
+    const suivi = (await getTableColumns('tbl_reponses')).has('date_modification');
+    const colonnesSuivi = suivi
+      ? 'r.modifie_par_nom, r.date_modification,'
+      : 'NULL::text AS modifie_par_nom, NULL::timestamp AS date_modification,';
 
     const baseQuery = `
       FROM (
@@ -822,6 +864,10 @@ const ReponsesModel = {
                 r.type_formulaire,
                 r."dateA",
                 r.tri_statut,
+                -- Auteur et décision : la liste sert aussi à compléter la demande d'un collègue.
+                r.usager_nom,
+                r.statut_approbation,
+                ${colonnesSuivi}
                 COALESCE(i.titre_document, r.reponses->>'titre_document', r.reponses->'baseData'->>'titre_document') AS titre_document,
                 COALESCE(i.bibliotheque,   r.reponses->>'bibliotheque',   r.reponses->'baseData'->>'bibliotheque')   AS bibliotheque,
                 COALESCE(i.statut_bibliotheque, r.reponses->>'statut_bibliotheque', r.reponses->'baseData'->>'statut_bibliotheque') AS statut_bibliotheque,

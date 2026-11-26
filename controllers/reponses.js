@@ -1,4 +1,5 @@
 const ReponsesModel = require('../models/reponses');
+const { ROLES_PERSONNEL } = require('../middleware/jwt.middleware');
 const { publicError } = require('../util/errors');
 const config         = require('../config/config');
 const { posterN8n, notifierEvenement } = require('../util/notifications-n8n');
@@ -14,6 +15,24 @@ const ROLES_TRANSMISE = ['TechDocTri', 'Admin', 'SuperAdmin'];
 // Champs « TechDoc Tri » (transmise en bibliothèque, notes) : équipe de tri seulement (le
 // SuperAdmin hérite de tous les accès).
 const ROLES_SUIVI_TRI = ['TechDocTri', 'SuperAdmin'];
+const ROLES_ADMIN     = ['Admin', 'SuperAdmin'];
+// Formulaire réservé à son auteur : pas de modification par un collègue.
+const TYPE_SUGGESTION = "Suggestion d'achat - Usager";
+
+/** Vrai si la personne connectée est l'auteur de la demande (courriel de la session au
+ *  moment de la saisie). */
+function _estAuteur(demande, user) {
+  const a = String(demande?.usager_courriel || '').trim().toLowerCase();
+  const b = String(user?.email || '').trim().toLowerCase();
+  return !!a && a === b;
+}
+
+/** Horodatage comparable (ms) d'une date de modification, null si absente. */
+function _horodatage(v) {
+  if (!v) return null;
+  const t = new Date(v).getTime();
+  return Number.isNaN(t) ? null : t;
+}
 
 const APP_URL = process.env.APP_URL || 'http://localhost:4200';
 
@@ -447,7 +466,7 @@ const ReponsesController = {
     try {
       const limit  = Math.min(Math.max(parseInt(req.query.limit)  || 25, 1), 100);
       const offset = Math.max(parseInt(req.query.offset) || 0, 0);
-      const { search, type_formulaire, bibliotheque, dateDebut, dateFin, statut } = req.query;
+      const { search, type_formulaire, bibliotheque, dateDebut, dateFin, statut, collaboration } = req.query;
       const result = await ReponsesModel.findAllPublic({
         limit, offset,
         search:           search           || null,
@@ -456,6 +475,7 @@ const ReponsesController = {
         dateDebut:        dateDebut         || null,
         dateFin:          dateFin           || null,
         statut:           statut            || null,
+        collaboration:    collaboration === '1' || collaboration === 'true',
       });
       res.json(result);
     } catch (err) {
@@ -500,6 +520,11 @@ const ReponsesController = {
     const id = parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ error: 'id invalide.' });
     try {
+      // Un collègue peut compléter et soumettre une demande, pas la supprimer.
+      const demande = await ReponsesModel.findById(id);
+      if (demande && !_estAuteur(demande, req.user) && !ROLES_ADMIN.includes(req.user?.role)) {
+        return res.status(403).json({ error: 'Seule la personne qui a saisi la demande peut la supprimer.' });
+      }
       const deleted = await ReponsesModel.deleteById(id);
       if (!deleted) return res.status(404).json({ error: 'Demande introuvable ou déjà traitée.' });
       return res.status(204).send();
@@ -539,6 +564,25 @@ const ReponsesController = {
       if (avant?.tri_statut && !ROLES_COMPLETER_SUGGESTION.includes(role)) {
         return res.status(403).json({ error: 'Seules l\'équipe de tri et les Admin peuvent modifier une suggestion publique.' });
       }
+      // Demande d'un collègue (travail en collaboration) : réservée au personnel, et jamais pour
+      // une suggestion d'achat, qui reste à son auteur (et aux Admin).
+      if (avant && !avant.tri_statut && !_estAuteur(avant, req.user)) {
+        if (!ROLES_PERSONNEL.includes(role)) {
+          return res.status(403).json({ error: 'Vous ne pouvez modifier que vos propres demandes.' });
+        }
+        if (avant.type_formulaire === TYPE_SUGGESTION && !ROLES_ADMIN.includes(role)) {
+          return res.status(403).json({ error: 'Une suggestion d\'achat ne peut être modifiée que par la personne qui l\'a saisie.' });
+        }
+      }
+      // Deux personnes sur la même demande : la version chargée (date_modification) doit être
+      // encore la dernière, sinon on refuse plutôt que d'écraser le travail de l'autre.
+      if (avant && 'version' in req.body && _horodatage(req.body.version) !== _horodatage(avant.date_modification)) {
+        return res.status(409).json({
+          error: 'Cette demande a été modifiée entre-temps' +
+                 (avant.modifie_par_nom ? ` par ${avant.modifie_par_nom}` : '') +
+                 '. Rechargez la page pour voir la dernière version.',
+        });
+      }
       // Champs « TechDoc Tri » (Suggestion d'achat, format plat) — valeurs existantes conservées
       // pour les rôles qui n'y ont pas droit : « transmise en bibliothèque » (cochée
       // automatiquement à la décision de tri) est modifiable par l'équipe de tri et les Admin ;
@@ -569,7 +613,11 @@ const ReponsesController = {
         }
       }
 
-      const updated = await ReponsesModel.updateReponses(id, reponses);
+      const u = req.user || {};
+      const updated = await ReponsesModel.updateReponses(id, reponses, {
+        nom: [u.prenom, u.nom].filter(Boolean).join(' ') || u.email || null,
+        courriel: u.email || null,
+      });
       if (!updated) return res.status(403).json({ error: 'Modification non autorisée ou demande introuvable.' });
       if (triCommentaire !== undefined) await ReponsesModel.majTriCommentaire(id, triCommentaire);
       // Une demande déjà existante (brouillon) qu'on bascule à "Soumettre aux ACQ" lors d'une
@@ -583,7 +631,7 @@ const ReponsesController = {
       let resoumise = false;
       if (avant?.item_id_cree && avant.item_existe) {
         try {
-          itemId = await ReponsesModel.synchroniserItemDepuisReponse(id);
+          itemId = await ReponsesModel.synchroniserItemDepuisReponse(id, [u.prenom, u.nom].filter(Boolean).join(' ') || u.email || null);
           resoumise = _estSoumise(reponses.baseData || reponses);
           if (resoumise) console.log(`[patch-reponses] demande #${id} soumise de nouveau aux ACQ (item #${itemId})`);
         } catch (err) {
@@ -622,7 +670,7 @@ const ReponsesController = {
         });
       }
 
-      res.json({ success: true, item_id: itemId });
+      res.json({ success: true, item_id: itemId, date_modification: updated.date_modification });
     } catch (err) {
       console.error('[patchReponses]', err);
       res.status(500).json({ error: 'Erreur lors de la mise à jour.' });

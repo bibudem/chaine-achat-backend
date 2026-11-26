@@ -198,6 +198,9 @@ const itemsController = {
 
       // Filtrer les valeurs vides
       const cleanedBaseData = cleanEmptyFields(baseData);
+      // Auteur de la modification : pris de la session (jamais du corps de la requête).
+      const u = req.user || {};
+      cleanedBaseData.utilisateur_modification = [u.prenom, u.nom].filter(Boolean).join(' ') || u.email || null;
       // Champs TDM envoyés vides : effacés (sinon impossible de remettre le Suivi Catalogage
       // à Vide ou de vider une note). Les autres champs vides restent ignorés.
       for (const champ of ['note_dtdm', 'note_interne_dtdm', 'catalogue']) {
@@ -548,6 +551,9 @@ const itemsController = {
       // de la liste (sous-requête plutôt que jointure : les filtres plus haut restent non qualifiés).
       const dataQuery  = `SELECT *, (SELECT mc.precision_demande FROM tbl_modification_ccol mc
                                       WHERE mc.item_id = tbl_items.item_id LIMIT 1) AS precision_demande,
+                                   -- Personne qui a saisi la demande (affichée si ≠ demandeur)
+                                   (SELECT r.usager_nom FROM tbl_reponses r
+                                     WHERE r.item_id_cree = tbl_items.item_id LIMIT 1) AS saisie_par_nom,
                                    -- Type de monographie (affiché sous le titre dans la liste)
                                    COALESCE(
                                      (SELECT na.type_monographie   FROM tbl_nouvel_abonnement   na   WHERE na.item_id   = tbl_items.item_id LIMIT 1),
