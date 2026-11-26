@@ -1,7 +1,6 @@
 const ReponsesModel = require('../models/reponses');
 const { publicError } = require('../util/errors');
 const config         = require('../config/config');
-const UtilisateursModel = require('../models/utilisateurs');
 const { posterN8n, notifierEvenement } = require('../util/notifications-n8n');
 
 // Statut par défaut d'une suggestion envoyée par la communauté UdeM (/suggestion-public).
@@ -210,10 +209,8 @@ const ReponsesController = {
       });
 
       // n8n /suggestion-publique (attendu : voir posterN8n) : accusé de réception au demandeur +
-      // notification à l'équipe TechDoc. Pas le webhook /suggestion, qui écrit aux ACQ — ils
-      // ne sont concernés qu'une fois la suggestion acceptée puis soumise.
-      const techdocCourriels = await UtilisateursModel.courrielsParRole('TechDocTri')
-        .catch(err => { console.error('[suggestion-publique] courriels TechDoc:', err.message); return []; });
+      // notification à la BAL TechDoc (BAL_TECHDOC, configurée dans n8n). Pas le webhook
+      // /suggestion, qui écrit aux ACQ — ils ne sont concernés qu'une fois la suggestion soumise.
       await posterN8n(N8N_SUGGESTION_PUBLIQUE_URL, 'suggestion-publique', row.id, {
         id:               row.id,
         type_formulaire:  "Suggestion d'achat - Usager",
@@ -222,7 +219,6 @@ const ReponsesController = {
         usager_courriel,
         usager_statut,
         reponses,
-        techdoc_courriels: techdocCourriels,
       });
 
       return res.status(201).json({ message: 'Suggestion enregistrée.', id: row.id, dateA: row.dateA });

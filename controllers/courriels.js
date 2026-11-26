@@ -98,7 +98,6 @@ const CourrielsController = {
         notif_role:        d.label || null,
         // Copie à l'équipe de tri : une seule fois, avec le courriel au demandeur.
         aviser_equipe_tri: !!b.aviser_equipe_tri && d.key === 'saisie',
-        tri_par:           b.tri_par ?? null,
       }, {
         destinataire:      adresses,
         role_destinataire: d.label || null,
