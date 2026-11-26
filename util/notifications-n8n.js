@@ -100,6 +100,7 @@ function notifierNoticeTdmSiNouvelle(avant, apres) {
     type_formulaire:     apres.formulaire_type,
     titre_document:      apres.titre_document,
     sous_titre:          apres.sous_titre,
+    contenu_autochtone:  apres.contenu_autochtone === true,
     editeur:             apres.editeur,
     isbn_issn:           apres.isbn_issn,
     bibliotheque:        apres.bibliotheque,

@@ -1,7 +1,7 @@
 const pool = require('../config/postgres.config');
 const PiecesJointesModel = require('../models/pieces-jointes');
 const ItemsFondsModel = require('../models/items-fonds');
-const { filterToTableColumns } = require('../util/db-columns');
+const { filterToTableColumns, getTableColumns } = require('../util/db-columns');
 const { publicError } = require('../util/errors');
 const { notifierNoticeTdmSiNouvelle, notifierTdmCompleteSiNouveau } = require('../util/notifications-n8n');
 
@@ -152,11 +152,15 @@ const itemsController = {
       // destinataire du courriel de fin de traitement (« Enregistrer et envoyer courriel »).
       // Préfixe saisie_par_ pour ne pas écraser usager_nom/usager_courriel des données
       // spécifiques (ex. « Nom de l'usager » de la suggestion d'achat).
+      // + dernière modification de la demande avant sa soumission (ex. complétée par un collègue) :
+      // repli de « Modifié le … par » quand l'item n'a pas d'utilisateur_modification.
+      const suiviReponse = (await getTableColumns('tbl_reponses')).has('modifie_par_nom');
       const { rows: triRows } = await client.query(
         `SELECT tri_statut, tri_commentaire, tri_par, tri_par_nom, tri_date,
                 id              AS reponse_id,
                 usager_nom      AS saisie_par_nom,
-                usager_courriel AS saisie_par_courriel
+                usager_courriel AS saisie_par_courriel,
+                ${suiviReponse ? 'modifie_par_nom' : 'NULL::text'} AS reponse_modifie_par_nom
            FROM tbl_reponses WHERE item_id_cree = $1 LIMIT 1`,
         [itemId]
       );

@@ -545,12 +545,18 @@ function buildFondsRepartition(row) {
 }
 
 // ==================== HELPER : DONNÉES DE BASE (tbl_items) ====================
+// Contenu autochtone : propre à ces 3 formulaires.
+const TYPES_CONTENU_AUTOCHTONE = new Set(['Nouvel achat unique', 'Nouvel abonnement', 'Modification et CCOL']);
+
 function buildBaseData(row, formulaireType) {
   return {
     formulaire_type:              formulaireType,
     priorite_demande:             row['priorite_demande']            || null,
     titre_document:               row['titre_document']              || null,
     sous_titre:                   row['sous_titre']                  || null,
+    // Cellule vide → null (écarté par cleanEmptyFields) : une mise à jour n'écrase pas la valeur en base.
+    contenu_autochtone:           TYPES_CONTENU_AUTOCHTONE.has(formulaireType) && String(row['contenu_autochtone'] ?? '').trim() !== ''
+                                    ? parseBool(row['contenu_autochtone']) : null,
     isbn_issn:                    row['isbn_issn']                   || null,
     editeur:                      row['editeur']                     || null,
     date_publication:             row['date_publication']            || null,
@@ -648,7 +654,7 @@ const IMPORT_CONFIGS = {
       'date_publication', 'source_information'
     ],
     templateHeaders: [
-      'priorite_demande', ...COMMON_HEADERS, ...FONDS_PARTAGES_HEADERS,
+      'priorite_demande', ...COMMON_HEADERS, ...FONDS_PARTAGES_HEADERS, 'contenu_autochtone',
       'id_ressource', 'projets_speciaux', 'format_pret_numerique',
       'type_monographie', 'format_electronique',
       'reserve_cours', 'reserve_cours_sigle', 'reserve_cours_session', 'reserve_cours_enseignant',
@@ -678,7 +684,7 @@ const IMPORT_CONFIGS = {
       'source_information', 'date_debut_abonnement'
     ],
     templateHeaders: [
-      'priorite_demande', ...COMMON_HEADERS, ...FONDS_PARTAGES_HEADERS, 'projet_special',
+      'priorite_demande', ...COMMON_HEADERS, ...FONDS_PARTAGES_HEADERS, 'contenu_autochtone', 'projet_special',
       'date_debut_abonnement', 'type_monographie',
       'usager_aviser_reservation', 'usager_aviser_activation'
     ],
@@ -698,7 +704,7 @@ const IMPORT_CONFIGS = {
       'source_information', 'precision_demande'
     ],
     templateHeaders: [
-      'priorite_demande', ...COMMON_HEADERS, ...FONDS_PARTAGES_HEADERS, 'projet_special',
+      'priorite_demande', ...COMMON_HEADERS, ...FONDS_PARTAGES_HEADERS, 'contenu_autochtone', 'projet_special',
       'precision_demande', 'numero_oclc', 'periode_couverte',
       'usager_aviser_activation'
     ],
